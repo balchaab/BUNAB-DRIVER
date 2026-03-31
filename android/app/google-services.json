@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "640663419067",
+    "project_id": "bunab-del",
+    "storage_bucket": "bunab-del.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:640663419067:android:ae54e9370795d5eb84919e",
+        "android_client_info": {
+          "package_name": "com.bunab.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB2WKb0R1BzV4d5GZ6xYJDWh_iTtvX7oZo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:640663419067:android:63c6e289d06b99b884919e",
+        "android_client_info": {
+          "package_name": "com.bunab.user"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB2WKb0R1BzV4d5GZ6xYJDWh_iTtvX7oZo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
