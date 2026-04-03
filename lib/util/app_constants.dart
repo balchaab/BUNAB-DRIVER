@@ -5,7 +5,7 @@ import 'package:ride_sharing_user_app/util/images.dart';
 class AppConstants {
   static const String appName = 'BUNAB Driver';
   static const String baseUrl = 'http://10.172.250.30:8000';
-  static const String polylineMapKey = 'AIzaSyCln8Q6KzbEayRtLM9_nMM-lFpq0yOlNFY';
+  static const String polylineMapKey = 'API_KEY HERE';
   static const double appVersion = 3.0; 
   static const String configUri = '/api/driver/configuration';
   static const String registration = '/api/driver/auth/registration';
