@@ -80,7 +80,7 @@ class RideRepository implements RideRepositoryInterface{
   }
 
   @override
-  Future<Response> tripStatusUpdate(String status, String id,String cancellationCause,String dateTime) async {
+  Future<Response> tripStatusUpdate(String id, String status, String cancellationCause, String dateTime) async {
     return await apiClient.postData(AppConstants.tripStatusUpdate,
         {
           "status": status,
@@ -151,6 +151,21 @@ class RideRepository implements RideRepositoryInterface{
     return await apiClient.getData(AppConstants.parcelUnpaidList);
   }
 
+  /// Many backends expect Ethiopian local format `0[79]XXXXXXXX`, not `251...`.
+  static String _ethiopianLocalPhone(String raw) {
+    String d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('251')) {
+      d = d.substring(3);
+    }
+    while (d.startsWith('0')) {
+      d = d.substring(1);
+    }
+    if (d.length == 9 && (d[0] == '7' || d[0] == '9')) {
+      return '0$d';
+    }
+    return raw.trim();
+  }
+
   @override
   Future<Response> startOnRoadTrip(
     List<String> passengerPhones, {
@@ -161,36 +176,80 @@ class RideRepository implements RideRepositoryInterface{
     double? startLatitude,
     double? startLongitude,
   }) async {
+    if (passengerPhones.isEmpty) {
+      return Response(statusCode: 400, statusText: 'customer_phone is required');
+    }
+
     final Map<String, dynamic> body = {
-      "passenger_phones": passengerPhones,
-      "family_count": familyCount,
+      "customer_phone": _ethiopianLocalPhone(passengerPhones.first),
     };
+    if (familyCount > 1) {
+      body["note"] = 'Passengers: $familyCount';
+    }
+    if (baseFare != null) {
+      body["estimated_fare"] = baseFare;
+    }
+    if (startLatitude != null && startLongitude != null) {
+      final String locNote = 'GPS: $startLatitude,$startLongitude';
+      body["note"] = ((body["note"] ?? '') as String).trim().isEmpty
+          ? locNote
+          : '${body["note"]}; $locNote';
+    }
+    if (passengerPhones.length > 1) {
+      final String extras = passengerPhones.skip(1).map(_ethiopianLocalPhone).join(', ');
+      body["note"] = ((body["note"] ?? '') as String).trim().isEmpty
+          ? 'Additional phones: $extras'
+          : '${body["note"]}; Additional phones: $extras';
+    }
     if (passengerPartySizes != null && passengerPartySizes.isNotEmpty) {
-      body["passenger_party_sizes"] = passengerPartySizes;
-    }
-    if(baseFare != null) {
-      body["base_fare"] = baseFare;
-    }
-    if(farePerKm != null) {
-      body["fare_per_km"] = farePerKm;
-    }
-    if(startLatitude != null) {
-      body["start_latitude"] = startLatitude;
-    }
-    if(startLongitude != null) {
-      body["start_longitude"] = startLongitude;
+      final String party = passengerPartySizes.join(',');
+      body["note"] = ((body["note"] ?? '') as String).trim().isEmpty
+          ? 'Party sizes: $party'
+          : '${body["note"]}; Party sizes: $party';
     }
     return await apiClient.postData(AppConstants.startOnRoadTrip, body);
   }
 
   @override
-  Future<Response> finishOnRoadTrip(String id) async {
-    return await apiClient.postData('${AppConstants.finishOnRoadTrip}$id', {});
+  Future<Response> finishOnRoadTrip(
+    String id, {
+    bool cancelled = false,
+    double? distanceKm,
+    double? idleFee,
+    double? delayFee,
+  }) async {
+    // Match tripStatusUpdate: POST with Laravel method spoof (same as normal cancel/complete).
+    final Map<String, dynamic> body = {
+      'trip_request_id': id,
+      'status': cancelled ? 'cancelled' : 'completed',
+      '_method': 'put',
+      'return_time': '',
+    };
+    if (cancelled) {
+      body['cancel_reason'] = 'driver_cancelled';
+    }
+    if (!cancelled) {
+      if (distanceKm != null) {
+        body['distance_km'] = distanceKm;
+      }
+      if (idleFee != null) {
+        body['idle_fee'] = idleFee;
+      }
+      if (delayFee != null) {
+        body['delay_fee'] = delayFee;
+      }
+    }
+    return await apiClient.postData(AppConstants.tripStatusUpdate, body);
   }
 
   @override
   Future<Response> getOnRoadTripList({int limit = 20, int offset = 1}) async {
     return await apiClient.getData('${AppConstants.onRoadTripList}?limit=$limit&offset=$offset');
+  }
+
+  @override
+  Future<Response> getOnRoadActiveTripRequest() async {
+    return await apiClient.getData(AppConstants.onRoadActiveTripRequest);
   }
 
   @override

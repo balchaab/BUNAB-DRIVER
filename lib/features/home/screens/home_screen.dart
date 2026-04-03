@@ -3,9 +3,7 @@ import 'package:get/get.dart';
 import 'package:just_the_tooltip/just_the_tooltip.dart';
 import 'package:ride_sharing_user_app/features/face_verification/controllers/face_verification_controller.dart';
 import 'package:ride_sharing_user_app/features/face_verification/widgets/home_face_verification_warning_widget.dart';
-import 'package:ride_sharing_user_app/features/home/screens/onroad_trip_ongoing_screen.dart';
 import 'package:ride_sharing_user_app/features/home/screens/onroad_trip_start_screen.dart';
-import 'package:ride_sharing_user_app/features/home/screens/ride_list_screen.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/home_referral_view_widget.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/refund_alert_bottomsheet.dart';
 import 'package:ride_sharing_user_app/features/notification/widgets/notification_shimmer_widget.dart';
@@ -15,16 +13,17 @@ import 'package:ride_sharing_user_app/features/profile/controllers/profile_contr
 import 'package:ride_sharing_user_app/features/profile/screens/profile_screen.dart';
 import 'package:ride_sharing_user_app/features/splash/controllers/splash_controller.dart';
 import 'package:ride_sharing_user_app/features/wallet/widgets/cash_in_hand_warning_widget.dart';
+import 'package:ride_sharing_user_app/helper/display_helper.dart';
 import 'package:ride_sharing_user_app/helper/home_screen_helper.dart';
 import 'package:ride_sharing_user_app/localization/localization_controller.dart';
 import 'package:ride_sharing_user_app/util/dimensions.dart';
 import 'package:ride_sharing_user_app/util/images.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/add_vehicle_design_widget.dart';
-import 'package:ride_sharing_user_app/features/home/screens/parcel_list_screen.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/ongoing_ride_card_widget.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/profile_info_card_widget.dart';
 import 'package:ride_sharing_user_app/features/home/widgets/vehicle_pending_widget.dart';
 import 'package:ride_sharing_user_app/features/profile/screens/profile_menu_screen.dart';
+import 'package:ride_sharing_user_app/features/map/screens/map_screen.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
 import 'package:ride_sharing_user_app/common_widgets/app_bar_widget.dart';
 import 'package:ride_sharing_user_app/common_widgets/sliver_delegate.dart';
@@ -69,6 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void initState() {
+    super.initState();
 
     _scrollController.addListener((){
       if(_scrollController.offset > 20){
@@ -81,9 +81,13 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
-    loadData();
-
-    super.initState();
+    // loadData() calls getProfileInfo() which sync-updates ProfileController before its first await.
+    // HomeScreen is built under ZoomDrawer (RawGestureDetector) inside GetBuilder<ProfileController>;
+    // updating the parent controller during this subtree's build triggers a framework assertion.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      loadData();
+    });
   }
 
   @override
@@ -124,6 +128,13 @@ class _HomeScreenState extends State<HomeScreen> {
     HomeScreenHelper().checkMaintanenceMode();
   }
 
+  Future<void> _openActiveOnRoadTrip(RideController rideController) async {
+    final bool ready = await rideController.prepareOnRoadTripForRideUi();
+    if (ready && mounted) {
+      Get.to(() => const MapScreen(fromScreen: 'on_road'));
+    }
+  }
+
   Future loadOngoingList() async {
     final RideController rideController = Get.find<RideController>();
     final SplashController splashController = Get.find<SplashController>();
@@ -132,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await rideController.ongoingTripList();
     Map<String, dynamic>? lastRefundData = splashController.getLastRefundData();
 
-    bool isShowBottomSheet = ((rideController.ongoingRideList?.length ?? 0) == 0) && ((rideController.parcelListModel?.totalSize ?? 0) == 0 ) && lastRefundData != null;
+    bool isShowBottomSheet = (rideController.liveOngoingRideCount == 0) && ((rideController.parcelListModel?.totalSize ?? 0) == 0 ) && lastRefundData != null;
 
     if(isShowBottomSheet) {
       await showModalBottomSheet(context: Get.context!, builder: (ctx)=> RefundAlertBottomSheet(
@@ -182,7 +193,95 @@ class _HomeScreenState extends State<HomeScreen> {
                           profileController.profileInfo?.vehicle?.vehicleRequestStatus == 'approved'
                       )
                         GetBuilder<RideController>(builder: (rideController) {
-                          return const OngoingRideCardWidget();
+                          final String? activeOnRoadId =
+                              rideController.activeOnRoadTrip?['id']?.toString();
+                          final String? firstLastId =
+                              rideController.lastRideDetails != null &&
+                                      rideController.lastRideDetails!.isNotEmpty
+                                  ? rideController.lastRideDetails![0].id
+                                  : null;
+                          final bool showOnRoadBanner =
+                              rideController.hasActiveOnRoadTrip &&
+                                  (firstLastId == null ||
+                                      firstLastId != activeOnRoadId);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (showOnRoadBanner)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: Dimensions.paddingSizeDefault,
+                                  ),
+                                  child: InkWell(
+                                    onTap: () => _openActiveOnRoadTrip(rideController),
+                                    borderRadius: BorderRadius.circular(
+                                      Dimensions.paddingSizeDefault,
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(
+                                        Dimensions.paddingSizeDefault,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          width: 0.25,
+                                          color: Theme.of(context)
+                                              .primaryColor
+                                              .withValues(alpha: 0.45),
+                                        ),
+                                        color: Theme.of(context).cardColor,
+                                        borderRadius: BorderRadius.circular(
+                                          Dimensions.paddingSizeDefault,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.directions_run_rounded,
+                                            color: Theme.of(context).primaryColor,
+                                          ),
+                                          const SizedBox(
+                                            width: Dimensions.paddingSizeDefault,
+                                          ),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'onroad_ride'.tr,
+                                                  style: textBold.copyWith(
+                                                    fontSize:
+                                                        Dimensions.fontSizeLarge,
+                                                  ),
+                                                ),
+                                                const SizedBox(
+                                                  height: Dimensions
+                                                      .paddingSizeExtraSmall,
+                                                ),
+                                                Text(
+                                                  '${'trip_id'.tr}: ${rideController.activeOnRoadTrip?['ref_id'] ?? rideController.activeOnRoadTrip?['id'] ?? ''}',
+                                                  style: textRegular.copyWith(
+                                                    color: Theme.of(context)
+                                                        .hintColor,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Icon(
+                                            Icons.chevron_right_rounded,
+                                            color: Theme.of(context).hintColor,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (showOnRoadBanner)
+                                const SizedBox(height: Dimensions.paddingSizeSmall),
+                              const OngoingRideCardWidget(),
+                            ],
+                          );
                         }),
 
                       if(profileController.profileInfo?.vehicle == null)
@@ -285,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ]),
 
           floatingActionButton: GetBuilder<RideController>(builder: (rideController) {
-            int ridingCount = rideController.ongoingRideList?.length ?? 0;
+            int ridingCount = rideController.liveOngoingRideCount;
             int parcelCount = rideController.parcelListModel?.totalSize ?? 0;
 
             if(Get.find<SplashController>().isShowToolTips){
@@ -330,15 +429,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                     label: 'onroad_ride'.tr,
                                     icon: Icons.directions_run_rounded,
                                     onLabelTap: () {
-                                      if(rideController.hasActiveOnRoadTrip) {
-                                        Get.to(() => const OnRoadTripOngoingScreen());
+                                      if (rideController.hasActiveOnRoadTrip) {
+                                        _openActiveOnRoadTrip(rideController);
+                                      } else if (rideController.hasRegularOngoingRide) {
+                                        showCustomSnackBar(
+                                          'you_cannot_start_this_trip'.tr,
+                                          isError: true,
+                                        );
                                       } else {
                                         Get.to(() => const OnRoadTripStartScreen());
                                       }
                                     },
                                     onIconTap: () {
-                                      if(rideController.hasActiveOnRoadTrip) {
-                                        Get.to(() => const OnRoadTripOngoingScreen());
+                                      if (rideController.hasActiveOnRoadTrip) {
+                                        _openActiveOnRoadTrip(rideController);
+                                      } else if (rideController.hasRegularOngoingRide) {
+                                        showCustomSnackBar(
+                                          'you_cannot_start_this_trip'.tr,
+                                          isError: true,
+                                        );
                                       } else {
                                         Get.to(() => const OnRoadTripStartScreen());
                                       }
@@ -360,8 +469,34 @@ class _HomeScreenState extends State<HomeScreen> {
                                     context: context,
                                     label: 'ongoing_ride'.tr,
                                     icon: Icons.pause_rounded,
-                                    onLabelTap: () => Get.to(() => const OnRoadTripOngoingScreen()),
-                                    onIconTap: () => Get.to(() => const OnRoadTripOngoingScreen()),
+                                    onLabelTap: () async {
+                                      if (rideController.hasActiveOnRoadTrip) {
+                                        await _openActiveOnRoadTrip(rideController);
+                                      } else if (rideController.hasRegularOngoingRide) {
+                                        final String? id =
+                                            rideController.firstBlockingOngoingTripId;
+                                        if (id != null) {
+                                          await rideController
+                                              .openTripMapFromDashboard(id);
+                                        }
+                                      } else {
+                                        showCustomSnackBar('no_trip_available'.tr);
+                                      }
+                                    },
+                                    onIconTap: () async {
+                                      if (rideController.hasActiveOnRoadTrip) {
+                                        await _openActiveOnRoadTrip(rideController);
+                                      } else if (rideController.hasRegularOngoingRide) {
+                                        final String? id =
+                                            rideController.firstBlockingOngoingTripId;
+                                        if (id != null) {
+                                          await rideController
+                                              .openTripMapFromDashboard(id);
+                                        }
+                                      } else {
+                                        showCustomSnackBar('no_trip_available'.tr);
+                                      }
+                                    },
                                     isLoading: rideController.isOnRoadActionLoading && rideController.onRoadActionType == 'finish',
                                   ),
                                 ),

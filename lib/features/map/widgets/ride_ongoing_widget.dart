@@ -43,6 +43,7 @@ class _RideOngoingWidgetState extends State<RideOngoingWidget> {
   @override
   Widget build(BuildContext context) {
     return GetBuilder<RideController>(builder: (rideController) {
+      final bool isOnRoadMode = rideController.isOnRoadTripMode;
       return currentState == 0 ?
       rideController.tripDetail != null ?
       _OngoingTripWidget(callBack: (){
@@ -52,6 +53,47 @@ class _RideOngoingWidgetState extends State<RideOngoingWidget> {
       }) :
       const SizedBox() :
       currentState == 1 ?
+      isOnRoadMode ?
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: Dimensions.paddingSizeSmall),
+            Text('cancel_ride'.tr, style: textSemiBold.copyWith(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: Dimensions.paddingSizeSmall),
+            Text('are_you_sure'.tr, style: textRegular),
+            const SizedBox(height: Dimensions.paddingSizeLarge),
+            Row(children: [
+              Expanded(
+                child: ButtonWidget(
+                  buttonText: 'no_continue_trip'.tr,
+                  onPressed: () {
+                    currentState = 0;
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: Dimensions.paddingSizeSmall),
+              Expanded(
+                child: ButtonWidget(
+                  buttonText: 'submit'.tr,
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  borderColor: Theme.of(context).colorScheme.error,
+                  textColor: Colors.white,
+                  onPressed: () async {
+                    await rideController.finishOnRoadTrip(cancelled: true);
+                    if (mounted) {
+                      Get.find<RiderMapController>().setRideCurrentState(RideState.initial);
+                      Get.offAll(() => const DashboardScreen());
+                    }
+                  },
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ) :
       rideController.tripDetail?.type != AppConstants.parcel ?
       Padding(
         padding: const EdgeInsets.symmetric(horizontal:Dimensions.paddingSizeDefault),
@@ -304,8 +346,8 @@ class _OngoingTripWidget extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(Dimensions.paddingSizeSmall),
               child: RouteWidget(
-                pickupAddress: rideController.tripDetail!.pickupAddress!,
-                destinationAddress: rideController.tripDetail!.destinationAddress!,
+                pickupAddress: rideController.tripDetail?.pickupAddress ?? '',
+                destinationAddress: rideController.tripDetail?.destinationAddress ?? '',
                 extraOne: firstRoute,
                 extraTwo: secondRoute,
                 entrance: rideController.tripDetail?.entrance ?? '',
@@ -327,20 +369,28 @@ class _OngoingTripWidget extends StatelessWidget {
                   PaymentItemInfoWidget(
                     icon: Images.farePrice,
                     title: 'fare_price'.tr,
-                    amount: double.parse(rideController.tripDetail!.estimatedFare!),
+                    amount: () {
+                      final String raw = rideController.tripDetail?.estimatedFare ?? '0';
+                      return double.tryParse(raw) ?? 0;
+                    }(),
                     isFromTripDetails: true,
                   ),
 
-                  PaymentItemInfoWidget(
-                    icon: Images.paymentTypeIcon,
-                    title: 'payment'.tr, amount: 234,
-                    paymentType: rideController.tripDetail!.paymentMethod!.replaceAll(RegExp('[\\W_]+'),' ').capitalize,
-                  ),
+                  if ((rideController.tripDetail?.paymentMethod ?? '').isNotEmpty)
+                    PaymentItemInfoWidget(
+                      icon: Images.paymentTypeIcon,
+                      title: 'payment'.tr,
+                      amount: 0,
+                      paymentType: (rideController.tripDetail?.paymentMethod ?? '')
+                          .replaceAll(RegExp('[\\W_]+'), ' ')
+                          .capitalize,
+                    ),
                 ]),
               ),
             ),
 
-            if (rideController.tripDetail!.note != null)
+            if (rideController.tripDetail?.note != null &&
+                (rideController.tripDetail!.note ?? '').isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: Dimensions.paddingSizeSmall),
                 child: Text(
@@ -349,9 +399,10 @@ class _OngoingTripWidget extends StatelessWidget {
                 ),
               ),
 
-            if (rideController.tripDetail!.note != null)
+            if (rideController.tripDetail?.note != null &&
+                (rideController.tripDetail!.note ?? '').isNotEmpty)
               Text(
-                rideController.tripDetail!.note!,
+                rideController.tripDetail!.note ?? '',
                 style: textRegular.copyWith(color: Theme.of(context).hintColor),
               ),
 
@@ -372,7 +423,9 @@ class _OngoingTripWidget extends StatelessWidget {
                   ),
 
                   Text(
-                    rideController.tripDetail!.parcelInformation!.payer!.tr,
+                    (rideController.tripDetail?.parcelInformation?.payer ?? '').isNotEmpty
+                        ? rideController.tripDetail!.parcelInformation!.payer!.tr
+                        : '',
                     style: textMedium.copyWith(color: Colors.white),
                   )
                 ]),
@@ -395,9 +448,10 @@ class _OngoingTripWidget extends StatelessWidget {
                 },
               ),
 
-            (rideController.tripDetail!.isPaused!) ?
+            ((rideController.tripDetail?.isPaused ?? false)) ?
             const SizedBox() :
-            (!rideController.tripDetail!.isPaused! && rideController.tripDetail!.type != AppConstants.parcel) ?
+            (!(rideController.tripDetail?.isPaused ?? false) &&
+                    rideController.tripDetail!.type != AppConstants.parcel) ?
             Column(children: [
               SliderButton(
                 action: () {
@@ -455,7 +509,8 @@ class _OngoingTripWidget extends StatelessWidget {
             Column(children: [
               SliderButton(
                 action: () {
-                  if (rideController.tripDetail!.parcelInformation!.payer == AppConstants.sender &&
+                  final payer = rideController.tripDetail?.parcelInformation?.payer;
+                  if (payer == AppConstants.sender &&
                       rideController.tripDetail!.paymentStatus == AppConstants.unPaid) {
                     rideController.getFinalFare(rideController.tripDetail!.id!).then((value) {
                       if (value.statusCode == 200) {

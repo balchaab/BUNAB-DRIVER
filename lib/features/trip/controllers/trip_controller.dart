@@ -3,13 +3,13 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ride_sharing_user_app/data/api_checker.dart';
-import 'package:ride_sharing_user_app/features/home/screens/ride_list_screen.dart';
 import 'package:ride_sharing_user_app/features/splash/controllers/splash_controller.dart';
 import 'package:ride_sharing_user_app/features/trip/domain/models/trip_cancellation_cause_list_model.dart';
 import 'package:ride_sharing_user_app/features/trip/domain/services/trip_service_interface.dart';
 import 'package:ride_sharing_user_app/features/trip/screens/review_this_customer_screen.dart';
 import 'package:ride_sharing_user_app/helper/display_helper.dart';
 import 'package:ride_sharing_user_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:ride_sharing_user_app/features/profile/controllers/profile_controller.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
 import 'package:ride_sharing_user_app/features/ride/domain/models/trip_details_model.dart';
 import 'package:ride_sharing_user_app/features/trip/domain/models/trip_model.dart';
@@ -143,6 +143,7 @@ class TripController extends GetxController implements GetxService{
     update();
     Response response = await tripServiceInterface.paymentSubmit(tripId, paymentMethod);
     if (response.statusCode == 200 ) {
+      Get.find<ProfileController>().getProfileInfo(silent: true);
 
       if(fromParcel){
         if(Get.find<RideController>().tripDetail?.parcelInformation?.payer == 'sender'){
@@ -158,13 +159,15 @@ class TripController extends GetxController implements GetxService{
       }else{
         Get.find<RideController>().ongoingTripList().then((value){
           if((Get.find<RideController>().ongoingTrip ?? []).isEmpty){
-            if (Get.find<SplashController>().config!.reviewStatus!) {
+            final bool showReview =
+                (Get.find<SplashController>().config?.reviewStatus) == true;
+            if (showReview) {
               Get.offAll(() => ReviewThisCustomerScreen(tripId: tripId));
             } else {
               Get.offAll(() => const DashboardScreen());
             }
           }else{
-            Get.offAll(()=> const RideListScreen());
+            Get.offAll(() => const DashboardScreen());
           }
         });
       }

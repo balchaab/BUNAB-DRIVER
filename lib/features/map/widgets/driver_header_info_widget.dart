@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ride_sharing_user_app/features/profile/controllers/profile_controller.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
+import 'package:ride_sharing_user_app/features/ride/domain/models/trip_details_model.dart';
 import 'package:ride_sharing_user_app/features/splash/controllers/splash_controller.dart';
 import 'package:ride_sharing_user_app/util/app_constants.dart';
 import 'package:ride_sharing_user_app/util/dimensions.dart';
@@ -16,6 +17,9 @@ class DriverHeaderInfoWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetBuilder<RideController>(builder: (rideController){
+      final trip = rideController.tripDetail;
+      final bool canNavigate = _isShowNavigatorButton(trip?.currentStatus) &&
+          _hasValidCoordinates(trip);
       return Padding(
         padding: const EdgeInsets.fromLTRB(Dimensions.paddingSizeDefault, 60, Dimensions.paddingSizeDefault,0),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,crossAxisAlignment: CrossAxisAlignment.start,
@@ -33,22 +37,12 @@ class DriverHeaderInfoWidget extends StatelessWidget {
 
             const Spacer(),
 
-            if(_isShowNavigatorButton(rideController.tripDetail?.currentStatus))
+            if (canNavigate)
               InkWell(
                 onTap: () async{
-                  if(rideController.tripDetail?.currentStatus == 'accepted' || rideController.tripDetail?.currentStatus == 'pending' || rideController.tripDetail?.currentStatus == 'out_for_pickup'){
-
-                    _openMaps(
-                      rideController.tripDetail!.pickupCoordinates!.coordinates![1],
-                      rideController.tripDetail!.pickupCoordinates!.coordinates![0],
-                    );
-
-                  }else {
-                    _openMaps(
-                      rideController.tripDetail!.destinationCoordinates!.coordinates![1],
-                      rideController.tripDetail!.destinationCoordinates!.coordinates![0],
-                    );
-
+                  final coords = _targetCoordinates(trip);
+                  if (coords != null) {
+                    _openMaps(coords.$1, coords.$2);
                   }
                 },
                 child: Container(
@@ -90,6 +84,36 @@ class DriverHeaderInfoWidget extends StatelessWidget {
     }else{
       return false;
     }
+  }
+
+  bool _hasValidCoordinates(TripDetail? trip) {
+    if (trip == null) return false;
+    final bool isPickupPhase = trip.currentStatus == 'accepted' ||
+        trip.currentStatus == 'pending' ||
+        trip.currentStatus == 'out_for_pickup';
+    final coords = isPickupPhase
+        ? trip.pickupCoordinates?.coordinates
+        : trip.destinationCoordinates?.coordinates;
+    return coords != null &&
+        coords.length >= 2 &&
+        coords[0] != null &&
+        coords[1] != null;
+  }
+
+  /// Returns (lat, long) for external maps, or null if unavailable.
+  (double, double)? _targetCoordinates(TripDetail? trip) {
+    if (!_hasValidCoordinates(trip)) return null;
+    final bool isPickupPhase = trip!.currentStatus == 'accepted' ||
+        trip.currentStatus == 'pending' ||
+        trip.currentStatus == 'out_for_pickup';
+    final List<dynamic>? coords = isPickupPhase
+        ? trip.pickupCoordinates?.coordinates
+        : trip.destinationCoordinates?.coordinates;
+    if (coords == null || coords.length < 2) return null;
+    final double? lat = (coords[1] as num?)?.toDouble();
+    final double? long = (coords[0] as num?)?.toDouble();
+    if (lat == null || long == null) return null;
+    return (lat, long);
   }
 
 }

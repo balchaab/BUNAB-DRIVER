@@ -167,7 +167,7 @@ class _ProfileStatusCardWidgetState extends State<ProfileStatusCardWidget> {
               activeTextFontWeight: FontWeight.w700,
               toggleColor: Colors.green,
               onToggle: (val) async {
-                int ridingCount = Get.find<RideController>().ongoingRideList?.length ?? 0;
+                int ridingCount = Get.find<RideController>().liveOngoingRideCount;
                 int parcelCount = Get.find<RideController>().parcelListModel?.totalSize ?? 0;
                 if((ridingCount + parcelCount) > 0){
                   showCustomSnackBar('sorry_you_canot_go_offline'.tr);

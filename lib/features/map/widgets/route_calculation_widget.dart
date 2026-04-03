@@ -10,6 +10,7 @@ import 'package:ride_sharing_user_app/util/images.dart';
 import 'package:ride_sharing_user_app/util/styles.dart';
 import 'package:ride_sharing_user_app/features/map/controllers/map_controller.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
+import 'package:ride_sharing_user_app/features/ride/domain/models/trip_details_model.dart';
 import 'package:ride_sharing_user_app/common_widgets/button_widget.dart';
 import 'package:square_progress_indicator/square_progress_indicator.dart';
 
@@ -32,8 +33,12 @@ class RouteCalculationWidget extends StatelessWidget {
             min = ((duration % 3600)/60).floor();
           }
           sec = (duration % 60);
-          remainingPercent = (rideController.matchedMode != null)?
-          (double.parse(rideController.matchedMode!.distance.toString())) / rideController.tripDetail!.estimatedDistance! : 0;
+          final double estKm = rideController.tripDetail?.estimatedDistance ?? 0;
+          if (rideController.matchedMode != null && estKm > 0) {
+            remainingPercent = double.parse(rideController.matchedMode!.distance.toString()) / estKm;
+          } else {
+            remainingPercent = 0;
+          }
         }
 
         return Column(children: [
@@ -78,7 +83,7 @@ class RouteCalculationWidget extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,crossAxisAlignment: CrossAxisAlignment.center, children: [
                         Text(
-                          rideController.matchedMode!.distanceText!.replaceAll(" km", ''),
+                          (rideController.matchedMode!.distanceText ?? '0').replaceAll(" km", ''),
                           style: textSemiBold.copyWith(fontSize: Dimensions.fontSizeLarge,
                           ),
                         ),
@@ -102,10 +107,10 @@ class RouteCalculationWidget extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: Dimensions.paddingSizeExtraLarge),
                     child: ButtonWidget(
-                      buttonText: rideController.tripDetail!.isPaused! ?
+                      buttonText: (rideController.tripDetail?.isPaused == true) ?
                       'resume_trip_from_here'.tr : 'pause_trip_for_a_moment'.tr,
                       transparent: true,
-                      icon: rideController.tripDetail!.isPaused!? Icons.play_arrow_rounded : Icons.pause,
+                      icon: (rideController.tripDetail?.isPaused == true)? Icons.play_arrow_rounded : Icons.pause,
                       borderWidth: .5,
                       showBorder: true,
                       textColor: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8),
@@ -114,7 +119,7 @@ class RouteCalculationWidget extends StatelessWidget {
                       onPressed: (){
                         rideController.waitingForCustomer(
                           rideController.tripDetail!.id!,
-                          rideController.tripDetail!.isPaused!? 'resume':'pause',
+                          (rideController.tripDetail?.isPaused == true)? 'resume':'pause',
                         ).then((value){
                           if(value.statusCode == 200){
                             rideController.getRideDetails(rideController.tripDetail!.id!);
@@ -127,7 +132,14 @@ class RouteCalculationWidget extends StatelessWidget {
             ),
 
           if(!fromEnd)
-          Container(
+          Builder(builder: (context) {
+            final TripDetail? trip = rideController.tripDetail;
+            if (trip == null) return const SizedBox.shrink();
+            final Customer? customer = trip.customer;
+            final String? fallbackPhone = TripPassengerUiHelper.phoneFromNote(trip.note);
+            final String noteLabel = TripPassengerUiHelper.passengerLabelFromNote(trip);
+            final String rating = trip.customerAvgRating ?? '0';
+            return Container(
             width: Get.width,
             margin: const EdgeInsets.only(top: Dimensions.paddingSizeSmall),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(Dimensions.paddingSizeSmall),
@@ -150,20 +162,31 @@ class RouteCalculationWidget extends StatelessWidget {
                       borderRadius : BorderRadius.circular(100),
                       child: ImageWidget(
                         width: 50,height: 50,
-                        image: rideController.tripDetail!.customer?.profileImage != null ?
-                        '${Get.find<SplashController>().config!.imageBaseUrl!.profileImageCustomer}/${rideController.tripDetail!.customer?.profileImage??''}':'',
+                        image: customer?.profileImage != null ?
+                        '${Get.find<SplashController>().config!.imageBaseUrl!.profileImageCustomer}/${customer?.profileImage??''}':'',
                       ),
                     ),
                   ]),
 
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if(rideController.tripDetail!.customer!.firstName != null && rideController.tripDetail!.customer!.lastName != null)
+                    if(customer != null && customer.firstName != null && customer.lastName != null)
                       SizedBox(width:100 ,child: Text(
-                        '${rideController.tripDetail!.customer!.firstName!} ${rideController.tripDetail!.customer!.lastName!}',
+                        '${customer.firstName!} ${customer.lastName!}',
                         style: textRegular,
                       )),
 
-                    if(rideController.tripDetail!.customer != null)
+                    if(customer == null)
+                      SizedBox(
+                        width: Get.width * 0.42,
+                        child: Text(
+                          noteLabel.isEmpty ? 'customer'.tr : noteLabel,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: textRegular,
+                        ),
+                      ),
+
+                    if(customer != null)
                       Row(children: [
                         Icon(
                           Icons.star_rate_rounded, color: Theme.of(context).colorScheme.primaryContainer,
@@ -171,7 +194,7 @@ class RouteCalculationWidget extends StatelessWidget {
                         ),
 
                         Text(
-                          double.parse(rideController.tripDetail!.customerAvgRating!).toStringAsFixed(1),
+                          double.parse(rating).toStringAsFixed(1),
                           style: textRegular.copyWith(),
                         ),
                       ]),
@@ -181,32 +204,47 @@ class RouteCalculationWidget extends StatelessWidget {
                 Container(width: 1,height: 25,color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.15)),
 
                 InkWell(
-                  onTap : () => Get.find<ChatController>().createChannel(
-                    rideController.tripDetail!.customer!.id!,
-                    tripId: rideController.tripDetail!.id,
-                  ),
-                  child: SizedBox(
-                    width: Dimensions.iconSizeLarge,
-                    child: Image.asset(Images.customerMessage, color: Theme.of(context).primaryColor),
+                  onTap: customer?.id != null
+                      ? () => Get.find<ChatController>().createChannel(
+                            customer!.id!,
+                            tripId: trip.id,
+                          )
+                      : null,
+                  child: Opacity(
+                    opacity: customer?.id != null ? 1 : 0.35,
+                    child: SizedBox(
+                      width: Dimensions.iconSizeLarge,
+                      child: Image.asset(Images.customerMessage, color: Theme.of(context).primaryColor),
+                    ),
                   ),
                 ),
 
                 Container(width: 1,height: 25,color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.15)),
 
                 InkWell(
-                  onTap: ()=> Get.find<SplashController>().sendMailOrCall(
-                    "tel:${rideController.tripDetail!.customer!.phone}", false,
-                  ),
-                  child: SizedBox(
-                    width: Dimensions.iconSizeLarge,
-                    child: Image.asset(Images.customerCall, color: Theme.of(context).primaryColor),
+                  onTap: () {
+                    final String? tel = (customer?.phone != null && customer!.phone!.trim().isNotEmpty)
+                        ? customer.phone
+                        : fallbackPhone;
+                    if (tel == null || tel.isEmpty) return;
+                    Get.find<SplashController>().sendMailOrCall('tel:$tel', false);
+                  },
+                  child: Opacity(
+                    opacity: ((customer?.phone != null && customer!.phone!.trim().isNotEmpty) || fallbackPhone != null)
+                        ? 1
+                        : 0.35,
+                    child: SizedBox(
+                      width: Dimensions.iconSizeLarge,
+                      child: Image.asset(Images.customerCall, color: Theme.of(context).primaryColor),
+                    ),
                   ),
                 ),
 
                 const SizedBox()
               ]),
             ),
-          )
+          );
+          })
         ]);
       });
     });

@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:ride_sharing_user_app/features/dashboard/controllers/bottom_menu_controller.dart';
-import 'package:ride_sharing_user_app/features/map/controllers/map_controller.dart';
-import 'package:ride_sharing_user_app/features/map/screens/map_screen.dart';
 import 'package:ride_sharing_user_app/features/profile/controllers/profile_controller.dart';
-import 'package:ride_sharing_user_app/features/trip/screens/payment_received_screen.dart';
 import 'package:ride_sharing_user_app/helper/date_converter.dart';
 import 'package:ride_sharing_user_app/helper/price_converter.dart';
 import 'package:ride_sharing_user_app/util/app_constants.dart';
@@ -274,38 +271,6 @@ class OngoingRideCardWidget extends StatelessWidget {
   }
 }
 
-void _moveToMapScreen(String tripId){
-
-  Get.find<RideController>().getRideDetails(tripId).then((value){
-    if(value.statusCode == 200){
-      if(Get.find<RideController>().tripDetail?.currentStatus == AppConstants.accepted || Get.find<RideController>().tripDetail?.currentStatus == AppConstants.outForPickup){
-        if(Get.find<RideController>().tripDetail?.currentStatus == AppConstants.accepted) {
-          Get.find<RiderMapController>().setRideCurrentState(RideState.accepted);
-        }else{
-          Get.find<RiderMapController>().setRideCurrentState(RideState.outForPickup);
-        }
-        Get.find<RiderMapController>().setMarkersInitialPosition();
-        Get.find<RideController>().remainingDistance(tripId,mapBound: true);
-        Get.find<RideController>().updateRoute(false, notify: true);
-        Get.to(() => const MapScreen(fromScreen: 'splash'));
-
-      }else if(Get.find<RideController>().tripDetail?.currentStatus == AppConstants.completed && Get.find<RideController>().tripDetail?.paymentStatus == AppConstants.unPaid){
-        Get.find<RideController>().getFinalFare(tripId).then((value) {
-          if (value.statusCode == 200) {
-            Get.to(() => const PaymentReceivedScreen());
-          }
-        });
-
-      }else{
-        Get.find<RiderMapController>().setRideCurrentState(RideState.ongoing);
-        Get.find<RiderMapController>().setMarkersInitialPosition();
-        Get.find<RideController>().remainingDistance(tripId,mapBound: true);
-        Get.find<RideController>().updateRoute(false, notify: true);
-        Get.to(() => const MapScreen(fromScreen: 'splash'));
-
-      }
-
-    }
-  });
-
+void _moveToMapScreen(String tripId) {
+  Get.find<RideController>().openTripMapFromDashboard(tripId);
 }

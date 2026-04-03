@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ride_sharing_user_app/common_widgets/app_bar_widget.dart';
-import 'package:ride_sharing_user_app/features/home/screens/onroad_trip_summary_screen.dart';
+import 'package:ride_sharing_user_app/common_widgets/swipable_button/slider_buttion_widget.dar.dart';
+import 'package:ride_sharing_user_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
+import 'package:ride_sharing_user_app/localization/localization_controller.dart';
 import 'package:ride_sharing_user_app/util/dimensions.dart';
 import 'package:ride_sharing_user_app/util/styles.dart';
 
@@ -41,6 +43,56 @@ class _OnRoadTripOngoingScreenState extends State<OnRoadTripOngoingScreen> {
   String _formatDuration(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.inHours)}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
+  }
+
+  Future<void> _showCompleteDialog(BuildContext context, RideController rideController) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Dimensions.paddingSizeSmall)),
+          child: Padding(
+            padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.topRight,
+                  child: InkWell(
+                    onTap: () => Get.back(),
+                    child: Icon(Icons.highlight_remove_rounded, color: Theme.of(context).hintColor),
+                  ),
+                ),
+                Text('Seems you reached destination', style: textMedium),
+                const SizedBox(height: Dimensions.paddingSizeDefault),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Get.back(),
+                        child: const Text('Continue'),
+                      ),
+                    ),
+                    const SizedBox(width: Dimensions.paddingSizeSmall),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Get.back();
+                          await rideController.finishOnRoadTrip();
+                        },
+                        child: const Text('End'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -82,28 +134,95 @@ class _OnRoadTripOngoingScreenState extends State<OnRoadTripOngoingScreen> {
                           style: textRegular.copyWith(color: Theme.of(context).hintColor),
                         ),
                         const Spacer(),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: loading
-                                ? null
-                                : () async {
-                                    final response = await rideController.finishOnRoadTrip();
-                                    if (response?.statusCode == 200 && mounted) {
-                                      Get.off(() => OnRoadTripSummaryScreen(
-                                            tripData: rideController.lastCompletedOnRoadTrip,
-                                          ));
-                                    }
-                                  },
-                            child: loading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Text('Complete Trip'),
+                        if (loading)
+                          const Center(
+                            child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        else ...[
+                          SliderButton(
+                            action: () => _showCompleteDialog(context, rideController),
+                            label: Text(
+                              'complete'.tr,
+                              style: TextStyle(color: Theme.of(context).primaryColor, fontSize: Dimensions.fontSizeLarge),
+                            ),
+                            dismissThresholds: 0.5,
+                            dismissible: false,
+                            shimmer: false,
+                            width: Get.width,
+                            height: 40,
+                            buttonSize: 40,
+                            radius: 20,
+                            icon: Center(
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(shape: BoxShape.circle, color: Theme.of(context).cardColor),
+                                child: Center(
+                                  child: Icon(
+                                    Get.find<LocalizationController>().isLtr
+                                        ? Icons.arrow_forward_ios_rounded
+                                        : Icons.keyboard_arrow_left,
+                                    color: Colors.grey,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            isLtr: Get.find<LocalizationController>().isLtr,
+                            boxShadow: const BoxShadow(blurRadius: 0),
+                            buttonColor: Colors.transparent,
+                            backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.15),
+                            baseColor: Theme.of(context).primaryColor,
                           ),
-                        ),
+                          const SizedBox(height: Dimensions.paddingSizeSmall),
+                          SliderButton(
+                            action: () async {
+                              await rideController.finishOnRoadTrip(cancelled: true);
+                              if (mounted) {
+                                Get.offAll(() => const DashboardScreen());
+                              }
+                            },
+                            label: Text(
+                              'cancel_ride'.tr,
+                              style: textRegular.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                                fontSize: Dimensions.fontSizeLarge,
+                              ),
+                            ),
+                            dismissThresholds: 0.5,
+                            dismissible: false,
+                            shimmer: false,
+                            width: Get.width,
+                            height: 40,
+                            buttonSize: 40,
+                            radius: 20,
+                            icon: Center(
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(shape: BoxShape.circle, color: Theme.of(context).cardColor),
+                                child: Center(
+                                  child: Icon(
+                                    Get.find<LocalizationController>().isLtr
+                                        ? Icons.arrow_forward_ios_rounded
+                                        : Icons.keyboard_arrow_left,
+                                    color: Theme.of(context).colorScheme.error,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            isLtr: Get.find<LocalizationController>().isLtr,
+                            boxShadow: const BoxShadow(blurRadius: 0),
+                            buttonColor: Colors.transparent,
+                            backgroundColor: Theme.of(context).colorScheme.error.withValues(alpha: 0.15),
+                            baseColor: Theme.of(context).colorScheme.error,
+                          ),
+                        ],
                       ],
                     ),
                   ),

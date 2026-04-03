@@ -1,3 +1,6 @@
+import 'package:ride_sharing_user_app/features/ride/domain/models/trip_details_model.dart'
+    as trip_detail;
+
 class FinalFareModel {
   String? responseCode;
   String? message;
@@ -120,8 +123,8 @@ class FinalFare {
       });
 
   FinalFare.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    refId = json['ref_id'];
+    id = json['id']?.toString();
+    refId = json['ref_id']?.toString();
     if(json['estimated_fare'] != null){
       estimatedFare = json['estimated_fare'].toDouble();
     }
@@ -230,6 +233,88 @@ class FinalFare {
     parcelStartTime = json['parcel_start_time'];
     parcelCompleteTime = json['parcel_complete_time'];
 
+  }
+
+  /// When [getFinalFare] returns nothing or fails to parse (e.g. on-road trips), reuse
+  /// ride details so [PaymentReceivedScreen] can show distance, time, and fare like app bookings.
+  factory FinalFare.fromTripDetail(trip_detail.TripDetail d) {
+    double parseDyn(dynamic v) {
+      if (v == null) {
+        return 0;
+      }
+      if (v is double) {
+        return v;
+      }
+      if (v is int) {
+        return v.toDouble();
+      }
+      return double.tryParse(v.toString()) ?? 0;
+    }
+
+    PickupCoordinates? mapCoords(trip_detail.PickupCoordinates? c) {
+      if (c == null) {
+        return null;
+      }
+      return PickupCoordinates(type: c.type, coordinates: c.coordinates);
+    }
+
+    double paid = parseDyn(d.paidFare);
+    if (paid == 0) {
+      paid = parseDyn(d.actualFare);
+    }
+    if (paid == 0) {
+      paid = parseDyn(d.totalFare);
+    }
+
+    return FinalFare(
+      id: d.id ?? d.refId,
+      refId: d.refId,
+      estimatedFare: parseDyn(d.estimatedFare),
+      actualFare: parseDyn(d.actualFare),
+      estimatedDistance: d.estimatedDistance,
+      paidFare: paid,
+      actualDistance: d.actualDistance,
+      paymentStatus: d.paymentStatus,
+      paymentMethod: d.paymentMethod,
+      couponAmount: d.couponAmount ?? 0,
+      discountAmount: d.discountAmount ?? 0,
+      note: d.note,
+      otp: d.otp,
+      riseRequestCount: d.riseRequestCount,
+      type: d.type,
+      createdAt: d.createdAt ?? DateTime.now().toIso8601String(),
+      entrance: d.entrance,
+      encodedPolyline: d.encodedPolyline,
+      currentStatus: d.currentStatus,
+      isPaused: d.isPaused,
+      coupon: null,
+      discount: null,
+      screenshot: d.screenshot,
+      distanceWiseFare: d.distanceWiseFare ?? 0,
+      pickupCoordinates: mapCoords(d.pickupCoordinates),
+      pickupAddress: d.pickupAddress,
+      destinationCoordinates: mapCoords(d.destinationCoordinates),
+      destinationAddress: d.destinationAddress,
+      startCoordinates: null,
+      dropCoordinates: null,
+      customerRequestCoordinates: mapCoords(d.customerRequestCoordinates),
+      intermediateAddresses: d.intermediateAddresses,
+      idleFee: d.idleFee ?? 0,
+      delayFee: d.delayFee ?? 0,
+      cancellationFee: d.cancellationFee ?? 0,
+      cancelledBy: d.cancelledBy,
+      vatTax: d.vatTax ?? 0,
+      tips: d.tips,
+      waitingTime: parseDyn(d.waitingTime),
+      delayTime: null,
+      idleTime: parseDyn(d.idleTime),
+      actualTime: d.actualTime ?? 0,
+      estimatedTime: parseDyn(d.estimatedTime),
+      rideCompleteTime: d.rideCompleteTime,
+      parcelCompleteTime: d.parcelCompleteTime,
+      rideStartTime: d.rideStartTime,
+      parcelStartTime: d.parcelStartTime,
+    );
   }
 
 }

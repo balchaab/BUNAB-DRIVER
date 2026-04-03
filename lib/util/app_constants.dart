@@ -4,7 +4,7 @@ import 'package:ride_sharing_user_app/util/images.dart';
 
 class AppConstants {
   static const String appName = 'BUNAB Driver';
-  static const String baseUrl = 'http://172.27.53.30:8000';
+  static const String baseUrl = 'http://10.172.250.30:8000';
   static const String polylineMapKey = 'AIzaSyCln8Q6KzbEayRtLM9_nMM-lFpq0yOlNFY';
   static const double appVersion = 3.0; 
   static const String configUri = '/api/driver/configuration';
@@ -107,9 +107,10 @@ class AppConstants {
   static const String digitalPayment = '/api/driver/pay-digitally';
   static const String faceVeryUri = '/api/driver/face-verification/verify';
   static const String skipFaceVerify = '/api/driver/face-verification/skip';
-  static const String startOnRoadTrip = '/api/driver/ride/on-road/start';
-  static const String finishOnRoadTrip = '/api/driver/ride/on-road/finish/';
-  static const String onRoadTripList = '/api/driver/ride/on-road/list';
+  static const String startOnRoadTrip = '/api/driver/trip/on-road/create';
+  /// Dedicated single row: ongoing on-road trip (booking_source + coordinates for map/details).
+  static const String onRoadActiveTripRequest = '/api/driver/ride/on-road/active-trip-request';
+  static const String onRoadTripList = '/api/driver/ride/list';
 
   //Ride Status
 

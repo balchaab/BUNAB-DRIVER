@@ -228,26 +228,76 @@ class ApiClient extends GetxService {
     }
   }
 
+  /// Laravel / JSON: `message`, or `errors` as map of field -> [messages], or list of {code,message}.
+  static String? _extractErrorMessageFromBody(dynamic body) {
+    if (body is! Map<String, dynamic>) return null;
+    final Map<String, dynamic> map = body;
+    final dynamic msg = map['message'];
+    if (msg != null && msg.toString().trim().isNotEmpty) {
+      return msg.toString();
+    }
+    final dynamic errors = map['errors'];
+    if (errors is Map) {
+      for (final dynamic v in errors.values) {
+        if (v is List && v.isNotEmpty) {
+          return v.first.toString();
+        }
+        if (v is String && v.isNotEmpty) {
+          return v;
+        }
+      }
+    }
+    if (errors is List && errors.isNotEmpty) {
+      final dynamic first = errors.first;
+      if (first is Map<String, dynamic> && first['message'] != null) {
+        return first['message'].toString();
+      }
+    }
+    return null;
+  }
+
   Response handleResponse(http.Response response, String uri) {
     dynamic body;
     try {
       body = jsonDecode(response.body);
     // ignore: empty_catches
     }catch(e) {}
+
+    String statusText = response.reasonPhrase ?? '';
+    if (response.statusCode != 200) {
+      if (body is Map<String, dynamic>) {
+        final String? extracted = _extractErrorMessageFromBody(body);
+        if (extracted != null && extracted.isNotEmpty) {
+          statusText = extracted;
+        } else if (body.toString().contains('errors')) {
+          try {
+            final ErrorResponse errorResponse = ErrorResponse.fromJson(body);
+            if (errorResponse.errors != null && errorResponse.errors!.isNotEmpty) {
+              final String? m = errorResponse.errors![0].message;
+              if (m != null && m.isNotEmpty) {
+                statusText = m;
+              }
+            }
+          } catch (_) {}
+        }
+      } else if (body is String && body.isNotEmpty && body.length < 400) {
+        statusText = body;
+      }
+    }
+
     Response localResponse = Response(
       body: body ?? response.body, bodyString: response.body.toString(),
       request: Request(headers: response.request!.headers, method: response.request!.method, url: response.request!.url),
-      headers: response.headers, statusCode: response.statusCode, statusText: response.reasonPhrase,
+      headers: response.headers, statusCode: response.statusCode, statusText: statusText,
     );
-    if(localResponse.statusCode != 200 && localResponse.body != null && localResponse.body is !String) {
-      if(localResponse.body.toString().startsWith('{errors: [{code:')) {
-        ErrorResponse errorResponse = ErrorResponse.fromJson(localResponse.body);
-        localResponse = Response(statusCode: localResponse.statusCode, body: localResponse.body, statusText: errorResponse.errors![0].message);
-      }else if(localResponse.body.toString().startsWith('{message')) {
-        localResponse = Response(statusCode: localResponse.statusCode, body: localResponse.body, statusText: localResponse.body['message']);
-      }
-    }else if(localResponse.statusCode != 200 && localResponse.body == null) {
-      localResponse = Response(statusCode: 0, statusText: noInternetMessage);
+    if(localResponse.statusCode != 200 && localResponse.body == null) {
+      localResponse = Response(
+        statusCode: 0,
+        body: localResponse.body,
+        statusText: noInternetMessage,
+        request: localResponse.request,
+        headers: localResponse.headers,
+      );
     }
     if(kDebugMode) {
       log('====> API Response: [${localResponse.statusCode}] $uri\n${localResponse.body}');

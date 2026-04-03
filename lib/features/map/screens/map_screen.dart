@@ -155,19 +155,21 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver{
                         style: Get.isDarkMode ? Get.find<ThemeController>().darkMap :
                         Get.find<ThemeController>().lightMap,
                         initialCameraPosition:  CameraPosition(
-                          target:  (rideController.tripDetail != null &&
-                              rideController.tripDetail!.pickupCoordinates != null) ?
-                          LatLng(
-                            rideController.tripDetail!.pickupCoordinates!.coordinates![1],
-                            rideController.tripDetail!.pickupCoordinates!.coordinates![0],
-                          ) : Get.find<LocationController>().initialPosition,
+                          target:  () {
+                            final coords = rideController.tripDetail?.pickupCoordinates?.coordinates;
+                            if (coords != null && coords.length >= 2) {
+                              return LatLng(coords[1], coords[0]);
+                            }
+                            return Get.find<LocationController>().initialPosition;
+                          }(),
                           zoom: 16,
                         ),
                         onMapCreated: (GoogleMapController controller) async {
                           riderMapController.mapController = controller;
                           if(riderMapController.currentRideState.name != 'initial'){
-                            if(riderMapController.currentRideState.name == 'accepted' || riderMapController.currentRideState.name == AppConstants.ongoing){
-                              Get.find<RideController>().remainingDistance(Get.find<RideController>().tripDetail!.id!,mapBound: true);
+                            final String? tid = Get.find<RideController>().tripDetail?.id;
+                            if (tid != null && (riderMapController.currentRideState.name == 'accepted' || riderMapController.currentRideState.name == AppConstants.ongoing)){
+                              Get.find<RideController>().remainingDistance(tid,mapBound: true);
                             }else{
                               riderMapController.getPickupToDestinationPolyline();}
                           }

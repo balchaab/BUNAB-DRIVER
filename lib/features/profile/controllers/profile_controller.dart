@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
@@ -119,7 +120,13 @@ class ProfileController extends GetxController implements GetxService{
   Future<Response> getProfileInfo({bool silent = false}) async {
     if (!silent) {
       isLoading = true;
-      update();
+      // Avoid update() synchronously: callers often invoke this from initState while
+      // GetBuilder<ProfileController> ancestors (e.g. ZoomDrawer) are still building.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!isClosed) {
+          update();
+        }
+      });
     }
     Response? response = await profileServiceInterface.getProfileInfo();
     if(response!.statusCode == 200){
@@ -448,8 +455,21 @@ class ProfileController extends GetxController implements GetxService{
 
   Timer? _timer;
   final Location _location = Location();
+
+  /// `location` plugin starts a location-type foreground service; Android 14+ needs
+  /// [FOREGROUND_SERVICE_LOCATION] in the manifest and can still throw if permissions/state are wrong.
+  Future<void> _setLocationBackgroundMode(bool enable) async {
+    try {
+      await _location.enableBackgroundMode(enable: enable);
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('Location.enableBackgroundMode($enable): $e\n$st');
+      }
+    }
+  }
+
   void startLocationRecord() {
-    _location.enableBackgroundMode(enable: true);
+    _setLocationBackgroundMode(true);
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
       List<String> status = ['accepted', 'ongoing', 'out_for_pickup'];
@@ -461,7 +481,7 @@ class ProfileController extends GetxController implements GetxService{
   }
 
   void stopLocationRecord() {
-    _location.enableBackgroundMode(enable: false);
+    _setLocationBackgroundMode(false);
     _timer?.cancel();
   }
 

@@ -64,6 +64,7 @@ class _OutForPickupWidgetState extends State<OutForPickupWidget> {
   Widget build(BuildContext context) {
     return GetBuilder<RiderMapController>(builder: (riderController){
       return GetBuilder<RideController>(builder: (rideController){
+        final bool isOnRoadMode = rideController.isOnRoadTripMode;
         return currentState == 0 ?
         rideController.tripDetail != null ?
         _AcceptedTripWidget(
@@ -77,6 +78,47 @@ class _OutForPickupWidgetState extends State<OutForPickupWidget> {
           },
         ) :
         const SizedBox() :
+        isOnRoadMode ?
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: Dimensions.paddingSizeSmall),
+              Text('cancel_ride'.tr, style: textSemiBold.copyWith(color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: Dimensions.paddingSizeSmall),
+              Text('are_you_sure'.tr, style: textRegular),
+              const SizedBox(height: Dimensions.paddingSizeLarge),
+              Row(children: [
+                Expanded(
+                  child: ButtonWidget(
+                    buttonText: 'no_continue_trip'.tr,
+                    onPressed: () {
+                      currentState = 0;
+                      setState(() {});
+                    },
+                  ),
+                ),
+                const SizedBox(width: Dimensions.paddingSizeSmall),
+                Expanded(
+                  child: ButtonWidget(
+                    buttonText: 'submit'.tr,
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    borderColor: Theme.of(context).colorScheme.error,
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      await rideController.finishOnRoadTrip(cancelled: true);
+                      if (mounted) {
+                        Get.find<RiderMapController>().setRideCurrentState(RideState.initial);
+                        Get.offAll(() => const DashboardScreen());
+                      }
+                    },
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ) :
         rideController.tripDetail?.type != 'parcel' ?
         Padding(padding: const EdgeInsets.symmetric(horizontal:Dimensions.paddingSizeDefault),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -222,6 +264,7 @@ class _AcceptedTripWidgetState extends State<_AcceptedTripWidget> {
   Widget build(BuildContext context) {
     return GetBuilder<RiderMapController>(builder: (riderController){
       return GetBuilder<RideController>(builder: (rideController){
+        final bool isOnRoadMode = rideController.isOnRoadTripMode;
 
         if(rideController.tripDetail!.estimatedDistance.toString().contains("km")){
           removeComma = rideController.tripDetail!.estimatedDistance.toString().replaceAll("km", '');
@@ -232,7 +275,7 @@ class _AcceptedTripWidgetState extends State<_AcceptedTripWidget> {
 
         return Padding(padding: const EdgeInsets.only(top: Dimensions.paddingSizeDefault),
           child: Column(children: [
-            if(Get.find<SplashController>().config?.otpConfirmationForTrip ?? false)
+            if(!isOnRoadMode && (Get.find<SplashController>().config?.otpConfirmationForTrip ?? false))
               (riderController.currentRideState == RideState.outForPickup && riderController.isInside ) ?
               OtpVerificationWidget(
                 onTap: (){
@@ -283,7 +326,7 @@ class _AcceptedTripWidgetState extends State<_AcceptedTripWidget> {
               ),
               const SizedBox(height: Dimensions.paddingSizeSmall),
 
-              if(rideController.tripDetail?.type == 'scheduled_request')
+              if(!isOnRoadMode && rideController.tripDetail?.type == 'scheduled_request')
                 Container(
                   decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
@@ -321,7 +364,7 @@ class _AcceptedTripWidgetState extends State<_AcceptedTripWidget> {
                 ),
               const SizedBox(height: Dimensions.paddingSizeSmall),
 
-              if(rideController.tripDetail?.type == 'scheduled_request' && (DateConverter.findTimeDifference(rideController.tripDetail?.scheduledAt ?? '') > 0))...[
+              if(!isOnRoadMode && rideController.tripDetail?.type == 'scheduled_request' && (DateConverter.findTimeDifference(rideController.tripDetail?.scheduledAt ?? '') > 0))...[
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),
                   child: Text(
@@ -372,7 +415,36 @@ class _AcceptedTripWidgetState extends State<_AcceptedTripWidget> {
             _FareDetailsWidget(rideController: rideController),
             const SizedBox(height: Dimensions.paddingSizeDefault),
 
-            if(!(Get.find<SplashController>().config?.otpConfirmationForTrip ?? false))...[
+            if(isOnRoadMode)...[
+              rideController.isPinVerificationLoading ?
+              SizedBox(width: 30,height: 30,child: CircularProgressIndicator(color: Theme.of(context).primaryColor)) :
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),
+                child: SliderButton(
+                  action: () {
+                    rideController.matchOtp(rideController.tripDetail!.id!, '');
+                  },
+                  label: Text('start_trip'.tr,
+                    style: TextStyle(color: Theme.of(context).primaryColor, fontSize: Dimensions.fontSizeLarge),
+                  ),
+                  dismissThresholds: 0.5, dismissible: false, shimmer: false,width: 1170,
+                  height: 40, buttonSize: 40, radius: 20,
+                  icon: Center(child: Container(width: 36, height: 36,
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: Theme.of(context).cardColor),
+                    child: Center(child: Icon(
+                      Get.find<LocalizationController>().isLtr ? Icons.arrow_forward_ios_rounded : Icons.keyboard_arrow_left,
+                      color: Colors.grey, size: Dimensions.paddingSizeLarge,
+                    )),
+                  )),
+                  isLtr: Get.find<LocalizationController>().isLtr,
+                  boxShadow: const BoxShadow(blurRadius: 0),
+                  buttonColor: Colors.transparent,
+                  backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.15),
+                  baseColor: Theme.of(context).primaryColor,
+                ),
+              ),
+              const SizedBox(height: Dimensions.paddingSizeSmall)
+            ] else if(!(Get.find<SplashController>().config?.otpConfirmationForTrip ?? false))...[
               rideController.isPinVerificationLoading ?
               SizedBox(width: 30,height: 30,child: CircularProgressIndicator(color: Theme.of(context).primaryColor)) :
               Padding(padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeDefault),

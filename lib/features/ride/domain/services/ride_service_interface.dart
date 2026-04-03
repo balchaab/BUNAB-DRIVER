@@ -31,6 +31,13 @@ abstract class RideServiceInterface {
     double? startLatitude,
     double? startLongitude,
   });
-  Future<dynamic> finishOnRoadTrip(String id);
+  Future<dynamic> finishOnRoadTrip(
+    String id, {
+    bool cancelled = false,
+    double? distanceKm,
+    double? idleFee,
+    double? delayFee,
+  });
   Future<dynamic> getOnRoadTripList({int limit = 20, int offset = 1});
+  Future<dynamic> getOnRoadActiveTripRequest();
 }

@@ -75,6 +75,13 @@ class RideCompletationDialogWidget extends StatelessWidget {
               InkWell(
                 onTap: (){
                   if(rideController.tripDetail!.type != "parcel"){
+                    if (rideController.isOnRoadTripMode) {
+                      Get.back();
+                      rideController.finishOnRoadTrip(
+                        distanceKm: rideController.matchedMode?.distance,
+                      );
+                      return;
+                    }
                     rideController.tripStatusUpdate('completed', rideController.tripDetail!.id!, "trip_completed_successfully", '').then((value) async {
                       if(value.statusCode == 200){
                         rideController.getRideDetails(rideController.tripDetail!.id!);

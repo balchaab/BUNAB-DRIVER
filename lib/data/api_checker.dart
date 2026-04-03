@@ -21,7 +21,10 @@ class ApiChecker {
       }
 
     }else {
-      showCustomSnackBar(response.statusText!);
+      final String text = (response.statusText != null && response.statusText!.trim().isNotEmpty)
+          ? response.statusText!.trim()
+          : 'connection_to_api_server_failed'.tr;
+      showCustomSnackBar(text);
     }
   }
 }

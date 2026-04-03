@@ -725,7 +725,7 @@ Future<dynamic> myBackgroundMessageReceiver(NotificationResponse response) async
 
 void _whenParcelAmountDeducted(RemoteMessage message){
   final RideController rideController = Get.find<RideController>();
-  bool isShowBottomSheet = ((rideController.ongoingRideList?.length ?? 0) == 0) && ((rideController.parcelListModel?.totalSize ?? 0) == 0 );
+  bool isShowBottomSheet = (rideController.liveOngoingRideCount == 0) && ((rideController.parcelListModel?.totalSize ?? 0) == 0 );
 
   if(isShowBottomSheet) {
     showModalBottomSheet(context: Get.context!, builder: (ctx)=> RefundAlertBottomSheet(

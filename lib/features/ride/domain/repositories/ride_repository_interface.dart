@@ -34,6 +34,14 @@ abstract class RideRepositoryInterface implements RepositoryInterface{
     double? startLatitude,
     double? startLongitude,
   });
-  Future<Response> finishOnRoadTrip(String id);
+  Future<Response> finishOnRoadTrip(
+    String id, {
+    bool cancelled = false,
+    double? distanceKm,
+    double? idleFee,
+    double? delayFee,
+  });
   Future<Response> getOnRoadTripList({int limit = 20, int offset = 1});
+  /// Current ongoing on-road ride_request (one row), or empty/null data if none.
+  Future<Response> getOnRoadActiveTripRequest();
 }

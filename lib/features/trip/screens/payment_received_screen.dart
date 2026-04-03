@@ -14,6 +14,7 @@ import 'package:ride_sharing_user_app/util/styles.dart';
 import 'package:ride_sharing_user_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
 import 'package:ride_sharing_user_app/features/trip/controllers/trip_controller.dart';
+import 'package:ride_sharing_user_app/helper/display_helper.dart';
 import 'package:ride_sharing_user_app/common_widgets/app_bar_widget.dart';
 import 'package:ride_sharing_user_app/common_widgets/button_widget.dart';
 import 'package:ride_sharing_user_app/common_widgets/payment_item_info_widget.dart';
@@ -39,11 +40,16 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if(state == AppLifecycleState.resumed){
-      Get.find<RideController>().getRideDetails(Get.find<RideController>().tripDetail!.id!).then((value){
-        if(Get.find<RideController>().tripDetail!.paymentStatus == 'paid'){
+      final RideController rc = Get.find<RideController>();
+      final String? tripId = rc.tripDetail?.id ?? rc.finalFare?.id;
+      if (tripId == null || tripId.isEmpty) {
+        return;
+      }
+      rc.getRideDetails(tripId).then((value){
+        if(rc.tripDetail?.paymentStatus == 'paid'){
           Get.offAll(()=> const DashboardScreen());
         }else{
-          Get.find<RideController>().getFinalFare(Get.find<RideController>().tripDetail!.id!);
+          rc.getFinalFare(tripId);
         }
       });
     }
@@ -200,12 +206,12 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
               if(!widget.fromParcel)
                 Padding(padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeExtraLarge),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center,children: [
-                    SummeryItem(title: '${finalFareController.finalFare!.actualTime} ${'minute'.tr}',
+                    SummeryItem(title: '${finalFareController.finalFare?.actualTime ?? 0} ${'minute'.tr}',
                       subTitle: 'time',
                     ),
                     SizedBox(width: Get.width * 0.2),
 
-                    SummeryItem(title: '${finalFareController.finalFare!.actualDistance} km',
+                    SummeryItem(title: '${finalFareController.finalFare?.actualDistance ?? 0} km',
                       subTitle: 'distance',
                     ),
 
@@ -227,7 +233,7 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
                 margin: const EdgeInsets.symmetric(vertical: Dimensions.paddingSizeSmall, horizontal: Dimensions.paddingSizeDefault),
                 child: Column(spacing: Dimensions.paddingSizeExtraSmall, children: [
                   Center(child: Text(
-                    DateConverter.stringToLocalDateOnly(finalFareController.finalFare!.createdAt!),
+                    DateConverter.stringToLocalDateOnly(finalFareController.finalFare!.createdAt ?? ''),
                     style: textRegular.copyWith(
                       fontSize: Dimensions.fontSizeSmall,
                       color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7) ,
@@ -304,25 +310,25 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
                       amount: finalFareController.finalFare?.distanceWiseFare?? 0,
                     ),
 
-                    if(!widget.fromParcel && finalFareController.finalFare!.cancellationFee!.toDouble() > 0)
+                    if(!widget.fromParcel && (finalFareController.finalFare?.cancellationFee ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.idleHourIcon,
                         title: 'cancellation_price'.tr,
                         amount: finalFareController.finalFare?.cancellationFee?? 0,
                       ),
 
-                    if(!widget.fromParcel && finalFareController.finalFare!.idleFee!.toDouble() > 0)
+                    if(!widget.fromParcel && (finalFareController.finalFare?.idleFee ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.idleHourIcon,
                         title: 'idle_price'.tr,
                         amount: finalFareController.finalFare?.idleFee?? 0,
                       ),
 
-                    if(!widget.fromParcel && finalFareController.finalFare!.delayFee!.toDouble() > 0)
+                    if(!widget.fromParcel && (finalFareController.finalFare?.delayFee ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.waitingPrice,
                         title: 'delay_price'.tr,
                         amount: finalFareController.finalFare?.delayFee?? 0,
                       ),
 
-                    if(finalFareController.finalFare!.couponAmount!.toDouble() > 0)
+                    if((finalFareController.finalFare?.couponAmount ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.coupon,
                         title: 'coupon_amount'.tr,
                         amount: finalFareController.finalFare?.couponAmount?? 0,
@@ -330,7 +336,7 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
                         subTitle: 'later_admin_will_pay_you_this_amount',
                       ),
 
-                    if(finalFareController.finalFare!.discountAmount!.toDouble() > 0)
+                    if((finalFareController.finalFare?.discountAmount ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.discountIcon,
                         title: 'discount_applied'.tr,
                         amount: finalFareController.finalFare?.discountAmount?? 0,
@@ -338,7 +344,7 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
                         subTitle: 'later_admin_will_pay_you_this_amount',
                       ),
 
-                    if(finalFareController.finalFare!.vatTax!.toDouble() > 0)
+                    if((finalFareController.finalFare?.vatTax ?? 0) > 0)
                       PaymentItemInfoWidget(icon: Images.farePrice,
                         title: 'vat_tax'.tr,
                         amount: finalFareController.finalFare?.vatTax?? 0,
@@ -395,8 +401,14 @@ class _PaymentReceivedScreenState extends State<PaymentReceivedScreen> with Widg
                         setState(() {
                           canPop = true;
                         });
+                        final RideController rc = Get.find<RideController>();
+                        final String? tripId = rc.finalFare?.id ?? rc.tripDetail?.id;
+                        if (tripId == null || tripId.isEmpty) {
+                          showCustomSnackBar('no_trip_available'.tr, isError: true);
+                          return;
+                        }
                         tripController.paymentSubmit(
-                          finalFareController.finalFare!.id!, 'cash', fromParcel: widget.fromParcel,
+                          tripId, 'cash', fromParcel: widget.fromParcel,
                         );
                       },
                     ));

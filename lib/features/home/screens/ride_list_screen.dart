@@ -72,8 +72,12 @@ class _TripCardWidget extends StatelessWidget {
     return GetBuilder<RideController>(builder: (rideController) {
       return InkWell(
         onTap: (){
+          final String? tripId = rideRequest.id;
+          if (tripId == null || tripId.isEmpty) {
+            return;
+          }
           if (rideRequest.currentStatus == AppConstants.accepted || rideRequest.currentStatus == AppConstants.outForPickup) {
-            Get.find<RideController>().getRideDetails(rideRequest.id!).then((value) {
+            Get.find<RideController>().getRideDetails(tripId).then((value) {
               if (value.statusCode == 200) {
                 Get.find<SafetyAlertController>().cancelDriverNeedSafetyStream();
                 if(rideRequest.currentStatus == AppConstants.accepted) {
@@ -83,14 +87,14 @@ class _TripCardWidget extends StatelessWidget {
                 }
 
                 Get.find<RiderMapController>().setMarkersInitialPosition();
-                Get.find<RideController>().remainingDistance(rideRequest.id!,mapBound: true);
+                Get.find<RideController>().remainingDistance(tripId,mapBound: true);
                 Get.find<RideController>().updateRoute(false, notify: true);
                 Get.to(() => const MapScreen(fromScreen: 'splash'));
               }
             });
 
           } else if ((rideRequest.currentStatus == AppConstants.completed || rideRequest.currentStatus == AppConstants.cancelled) && rideRequest.paymentStatus == AppConstants.unPaid) {
-            Get.find<RideController>().getFinalFare(rideRequest.id!).then((value) {
+            Get.find<RideController>().getFinalFare(tripId).then((value) {
               if (value.statusCode == 200) {
                 Get.to(() => const PaymentReceivedScreen());
               }
@@ -99,10 +103,10 @@ class _TripCardWidget extends StatelessWidget {
           } else {
             _checkDriverNeedSafety(rideRequest);
             Get.find<RiderMapController>().setRideCurrentState(RideState.ongoing);
-            Get.find<RideController>().getRideDetails(rideRequest.id!).then((value) {
+            Get.find<RideController>().getRideDetails(tripId).then((value) {
               if (value.statusCode == 200) {
                 Get.find<RiderMapController>().setMarkersInitialPosition();
-                Get.find<RideController>().remainingDistance(rideRequest.id!,mapBound: true);
+                Get.find<RideController>().remainingDistance(tripId,mapBound: true);
                 Get.find<RideController>().updateRoute(false, notify: true);
                 Get.to(() => const MapScreen(fromScreen: 'splash'));
               }
@@ -164,7 +168,7 @@ class _TripCardWidget extends StatelessWidget {
                             borderRadius: BorderRadius.circular(Dimensions.paddingSizeExtraSmall),
                           ),
                           child: Text(
-                            rideRequest.type!.tr,
+                            (rideRequest.type ?? 'ride_request').tr,
                             style: textRegular.copyWith(color: Theme.of(Get.context!).cardColor),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -177,16 +181,17 @@ class _TripCardWidget extends StatelessWidget {
 
               RouteWidget(
                 fromCard: true,
-                pickupAddress: rideRequest.pickupAddress!,
-                destinationAddress: rideRequest.destinationAddress!,
+                pickupAddress: rideRequest.pickupAddress ?? '',
+                destinationAddress: rideRequest.destinationAddress ?? '',
                 extraOne: firstRoute, extraTwo: secondRoute, entrance: rideRequest.entrance??'',
               ),
 
               if(rideRequest.customer != null)
                 CustomerInfoWidget(
                   fromTripDetails: false,
-                  customer: rideRequest.customer!, fare: rideRequest.estimatedFare!,
-                  customerRating: rideRequest.customerAvgRating!,
+                  customer: rideRequest.customer!,
+                  fare: rideRequest.estimatedFare ?? '0',
+                  customerRating: rideRequest.customerAvgRating ?? '0',
                 ),
             ]),
           ),

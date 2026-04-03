@@ -85,6 +85,10 @@ class TripDetail {
   String? rideStartTime;
   String? parcelStartTime;
   String? scheduledAt;
+  String? bookingSource;
+
+  bool get isOnRoadBooking =>
+      (bookingSource ?? '').toLowerCase() == 'on_road';
 
   TripDetail(
       {this.id,
@@ -153,7 +157,8 @@ class TripDetail {
         this.parcelStartTime,
         this.rideStartTime,
         this.scheduledAt,
-        this.intermediateCoordinates
+        this.intermediateCoordinates,
+        this.bookingSource,
       });
 
   TripDetail.fromJson(Map<String, dynamic> json) {
@@ -162,13 +167,13 @@ class TripDetail {
     customer = json['customer'] != null ? Customer.fromJson(json['customer']) : null;
     vehicle = json['vehicle'] != null ? Vehicle.fromJson(json['vehicle']) : null;
     vehicleCategory = json['vehicle_category'] != null ? VehicleCategory.fromJson(json['vehicle_category']) : null;
-    estimatedFare = json['estimated_fare'].toString();
-    orgEstFare = json['org_est_fare'].toString();
-    estimatedTime = json['estimated_time'].toString();
+    estimatedFare = json['estimated_fare']?.toString() ?? '0';
+    orgEstFare = json['org_est_fare']?.toString() ?? '0';
+    estimatedTime = json['estimated_time']?.toString() ?? '0';
     if(json['estimated_distance'] != null){
       estimatedDistance = json['estimated_distance'].toDouble();
     }
-    actualFare = json['actual_fare'].toString();
+    actualFare = json['actual_fare']?.toString() ?? '0';
     if(json['actual_time'] != null){
       try{
         actualTime = json['actual_time'].toDouble();
@@ -188,8 +193,8 @@ class TripDetail {
 
     }
 
-    waitingTime = json['waiting_time'].toString();
-    idleTime = json['idle_time'].toString();
+    waitingTime = json['waiting_time']?.toString() ?? '0';
+    idleTime = json['idle_time']?.toString() ?? '0';
 
     if(json['idle_fee'] != null){
       idleFee = json['idle_fee'].toDouble();
@@ -214,7 +219,7 @@ class TripDetail {
     }
     intermediateCoordinates = json['intermediate_coordinates'];
 
-    additionalCharge = json['additional_charge'].toString();
+    additionalCharge = json['additional_charge']?.toString() ?? '0';
     pickupCoordinates = json['pickup_coordinates'] != null
         ? PickupCoordinates.fromJson(json['pickup_coordinates'])
         : null;
@@ -244,7 +249,7 @@ class TripDetail {
       }
     }
     note = json['note'];
-    totalFare = json['total_fare'].toString();
+    totalFare = json['total_fare']?.toString() ?? '0';
     otp = json['otp'];
     riseRequestCount = json['rise_request_count'];
     type = json['type'];
@@ -256,7 +261,7 @@ class TripDetail {
     customerAvgRating = json['customer_avg_rating']?? '0';
     driverAvgRating = json['driver_avg_rating'];
     currentStatus = json['current_status'];
-    paidFare = json['paid_fare'].toString();
+    paidFare = json['paid_fare']?.toString() ?? '0';
     tripStatus = json['trip_status'] != null ? TripStatus.fromJson(json['trip_status']) : null;
     parcelInformation = json['parcel_information'] != null ? ParcelInformation.fromJson(json['parcel_information']) : null;
     if (json['parcel_user_info'] != null) {
@@ -281,7 +286,13 @@ class TripDetail {
     if(json['return_fee'] != null){
       returnFee = json['return_fee'].toDouble();
     }
-    dueAmount = json['due_amount'].toDouble();
+    if (json['due_amount'] != null) {
+      try {
+        dueAmount = (json['due_amount'] as num).toDouble();
+      } catch (_) {
+        dueAmount = double.tryParse(json['due_amount'].toString());
+      }
+    }
     returnTime = json['return_time'];
     parcelRefund = json['parcel_refund'] != null ?  ParcelRefund.fromJson(json['parcel_refund']) : null;
     driverSafetyAlert = json['driver_safety_alert'] != null ? DriverSafetyAlert.fromJson(json['driver_safety_alert']) : null;
@@ -291,6 +302,7 @@ class TripDetail {
     parcelStartTime = json['parcel_start_time'];
     parcelCompleteTime = json['parcel_complete_time'];
     scheduledAt = json['scheduled_at'];
+    bookingSource = json['booking_source']?.toString();
   }
 
 
@@ -328,7 +340,9 @@ class Customer {
     phone = json['phone'];
     identificationNumber = json['identification_number'];
     identificationType = json['identification_type'];
-    identificationImage = json['identification_image'].cast<String>();
+    if (json['identification_image'] != null) {
+      identificationImage = List<String>.from(json['identification_image'] as List<dynamic>);
+    }
     profileImage = json['profile_image'];
 
   }
@@ -465,7 +479,11 @@ class PickupCoordinates {
 
   PickupCoordinates.fromJson(Map<String, dynamic> json) {
     type = json['type'];
-    coordinates = json['coordinates'].cast<double>();
+    if (json['coordinates'] != null && json['coordinates'] is List) {
+      coordinates = (json['coordinates'] as List<dynamic>)
+          .map((e) => (e as num).toDouble())
+          .toList();
+    }
   }
 
 }
@@ -676,5 +694,29 @@ class DriverSafetyAlert {
     numberOfAlert = json['number_of_alert'];
     resolvedBy = json['resolved_by'];
     tripStatusWhenMakeAlert = json['trip_status_when_make_alert'];
+  }
+}
+
+/// Helpers when [TripDetail.customer] is null (e.g. on-road walk-in).
+class TripPassengerUiHelper {
+  TripPassengerUiHelper._();
+
+  static String? phoneFromNote(String? note) {
+    if (note == null || note.isEmpty) return null;
+    final RegExpMatch? m = RegExp(r'0[79]\d{8}').firstMatch(note);
+    if (m != null) return m.group(0);
+    final String compact = note.replaceAll(RegExp(r'\s'), '');
+    final RegExpMatch? m2 = RegExp(r'251[79]\d{8}').firstMatch(compact);
+    return m2?.group(0);
+  }
+
+  /// Returns note excerpt, or empty string to mean “use `customer`.tr in UI”.
+  static String passengerLabelFromNote(TripDetail trip) {
+    final String? n = trip.note;
+    if (n != null && n.trim().isNotEmpty) {
+      final String t = n.trim();
+      return t.length > 80 ? '${t.substring(0, 77)}...' : t;
+    }
+    return '';
   }
 }

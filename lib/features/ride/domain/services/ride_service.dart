@@ -88,8 +88,10 @@ class RideService implements RideServiceInterface{
   }
 
   @override
-  Future tripStatusUpdate(String id, String status, String cancellationCause,String dateTime) async{
-    return await rideRepositoryInterface.tripStatusUpdate(id, status, cancellationCause,dateTime);
+  Future tripStatusUpdate(String status, String id, String cancellationCause, String dateTime) async {
+    // Repository expects (trip_request_id, status, ...); controller passes (status, id, ...).
+    return await rideRepositoryInterface.tripStatusUpdate(
+        id, status, cancellationCause, dateTime);
   }
 
   @override
@@ -124,13 +126,30 @@ class RideService implements RideServiceInterface{
   }
 
   @override
-  Future finishOnRoadTrip(String id) {
-    return rideRepositoryInterface.finishOnRoadTrip(id);
+  Future finishOnRoadTrip(
+    String id, {
+    bool cancelled = false,
+    double? distanceKm,
+    double? idleFee,
+    double? delayFee,
+  }) {
+    return rideRepositoryInterface.finishOnRoadTrip(
+      id,
+      cancelled: cancelled,
+      distanceKm: distanceKm,
+      idleFee: idleFee,
+      delayFee: delayFee,
+    );
   }
 
   @override
   Future getOnRoadTripList({int limit = 20, int offset = 1}) {
     return rideRepositoryInterface.getOnRoadTripList(limit: limit, offset: offset);
+  }
+
+  @override
+  Future getOnRoadActiveTripRequest() {
+    return rideRepositoryInterface.getOnRoadActiveTripRequest();
   }
 
 }

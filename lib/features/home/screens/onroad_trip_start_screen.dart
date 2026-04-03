@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ride_sharing_user_app/features/map/screens/map_screen.dart';
 import 'package:ride_sharing_user_app/features/location/controllers/location_controller.dart';
-import 'package:ride_sharing_user_app/features/home/screens/onroad_trip_ongoing_screen.dart';
 import 'package:ride_sharing_user_app/features/ride/controllers/ride_controller.dart';
 import 'package:ride_sharing_user_app/helper/display_helper.dart';
 import 'package:ride_sharing_user_app/util/dimensions.dart';
@@ -27,6 +27,8 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
   bool _locationLoading = true;
   double? _startLatitude;
   double? _startLongitude;
+
+  bool get _hasDriverLocation => _startLatitude != null && _startLongitude != null;
 
   @override
   void initState() {
@@ -131,7 +133,11 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
           textAlign: TextAlign.center,
         ),
       ),
-      body: Column(
+      body: _locationLoading
+          ? _buildLocationLoadingBody(primary)
+          : !_hasDriverLocation
+              ? _buildLocationFailedBody(context, primary)
+              : Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -291,6 +297,7 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
               child: GetBuilder<RideController>(builder: (rideController) {
                 final bool loading =
                     rideController.isOnRoadActionLoading && rideController.onRoadActionType == 'start';
+                final bool canStart = !loading && _hasDriverLocation;
                 return SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -303,7 +310,7 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    onPressed: loading ? null : _onStartTripPressed,
+                    onPressed: canStart ? _onStartTripPressed : null,
                     child: loading
                         ? const SizedBox(
                             height: 22,
@@ -323,6 +330,67 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLocationLoadingBody(Color primary) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Dimensions.paddingSizeLarge),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: primary),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'loading_location'.tr,
+              textAlign: TextAlign.center,
+              style: textMedium.copyWith(fontSize: Dimensions.fontSizeLarge),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationFailedBody(BuildContext context, Color primary) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(Dimensions.paddingSizeLarge),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.location_off_outlined, size: 56, color: Theme.of(context).hintColor),
+            const SizedBox(height: 16),
+            Text(
+              'location_unavailable'.tr,
+              textAlign: TextAlign.center,
+              style: textMedium.copyWith(fontSize: Dimensions.fontSizeLarge),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: _locationLoading ? null : () => _loadDriverLocation(),
+                child: Text('retry'.tr, style: textBold.copyWith(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -447,7 +515,8 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
       }
     }
 
-    final response = await Get.find<RideController>().startOnRoadTrip(
+    final RideController rideController = Get.find<RideController>();
+    final response = await rideController.startOnRoadTrip(
       passengerPhones: normalized,
       familyCount: totalPassengers,
       passengerPartySizes: List<int>.from(_partySizes),
@@ -456,7 +525,19 @@ class _OnRoadTripStartScreenState extends State<OnRoadTripStartScreen> {
     );
 
     if (response?.statusCode == 200 && mounted) {
-      Get.off(() => const OnRoadTripOngoingScreen());
+      String? tripRequestId;
+      if (response?.body is Map<String, dynamic>) {
+        final dynamic data = response?.body['data'];
+        if (data is Map<String, dynamic>) {
+          tripRequestId = data['id']?.toString();
+        }
+      }
+      final bool ready = await rideController.prepareOnRoadTripForRideUi(tripRequestId: tripRequestId);
+      if (ready && mounted) {
+        Get.off(() => const MapScreen(fromScreen: 'on_road'));
+      } else if (mounted) {
+        showCustomSnackBar('Unable to load trip details. Please try again.');
+      }
     }
   }
 

@@ -48,7 +48,7 @@ class RiderBottomSheetWidget extends StatelessWidget {
                     borderRadius: BorderRadius.circular(Dimensions.paddingSizeExtraSmall),
                   )),
 
-                  if(mapController.currentRideState == RideState.initial)
+                  if(mapController.currentRideState == RideState.initial && !rideController.isOnRoadTripMode)
                     const StayOnlineWidget(),
 
                   if(mapController.currentRideState == RideState.pending)
@@ -66,7 +66,7 @@ class RiderBottomSheetWidget extends StatelessWidget {
                   if(mapController.currentRideState == RideState.completed)
                     const CalculatingSubTotalWidget(),
 
-                  if(mapController.currentRideState == RideState.initial)
+                  if(mapController.currentRideState == RideState.initial && !rideController.isOnRoadTripMode)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         Dimensions.paddingSizeDefault,Dimensions.paddingSizeSmall,

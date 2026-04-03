@@ -17,6 +17,9 @@ import 'package:ride_sharing_user_app/features/trip/controllers/trip_controller.
 import 'package:ride_sharing_user_app/helper/display_helper.dart';
 import 'package:ride_sharing_user_app/helper/pusher_helper.dart';
 import 'package:ride_sharing_user_app/features/map/controllers/map_controller.dart';
+import 'package:ride_sharing_user_app/features/dashboard/screens/dashboard_screen.dart';
+import 'package:ride_sharing_user_app/features/map/screens/map_screen.dart';
+import 'package:ride_sharing_user_app/util/app_constants.dart';
 import 'package:ride_sharing_user_app/features/profile/controllers/profile_controller.dart';
 import 'package:ride_sharing_user_app/features/ride/domain/models/final_fare_model.dart';
 import 'package:ride_sharing_user_app/features/ride/domain/models/on_going_trip_model.dart';
@@ -94,9 +97,16 @@ class RideController extends GetxController implements GetxService{
     }
     Response response = await rideServiceInterface.getRideDetails(tripId);
     if (response.statusCode == 200) {
-      tripDetail = TripDetailsModel.fromJson(response.body).data!;
-      polyline = tripDetail!.encodedPolyline!;
+      final TripDetail? parsed = TripDetailsModel.fromJson(response.body).data;
+      if (parsed == null) {
+        isLoading = false;
+        update();
+        return response;
+      }
+      tripDetail = parsed;
+      polyline = tripDetail!.encodedPolyline ?? '';
       isLoading = false;
+      _syncOnRoadLocalStateWithTripDetail(tripId);
 
       List<Attachments> attachments = tripDetail?.parcelRefund?.attachments ?? [];
       _thumbnailPaths = List.filled(attachments.length, '');
@@ -157,6 +167,118 @@ class RideController extends GetxController implements GetxService{
   List<TripDetail>? ongoingTrip, lastRideDetails;
   List<TripDetail>? get ongoingRideList => ongoingTrip;
 
+  /// True for trips that still occupy the driver (not completed/cancelled). The
+  /// all-ride-list API may still return completed rows — those must not block a new on-road trip.
+  bool _rideStatusBlocksStartingAnother(String? raw) {
+    final String s = (raw ?? '').toLowerCase().trim();
+    return s == AppConstants.pending ||
+        s == AppConstants.accepted ||
+        s == AppConstants.outForPickup ||
+        s == 'outforpickup' ||
+        s == AppConstants.ongoing ||
+        s == AppConstants.findingRider.toLowerCase() ||
+        s == 'scheduled';
+  }
+
+  bool get hasRegularOngoingRide =>
+      ongoingTrip != null &&
+      ongoingTrip!.any((TripDetail t) => _rideStatusBlocksStartingAnother(t.currentStatus));
+
+  /// Count for FAB badge: only live rides (excludes stale completed rows in the list).
+  int get liveOngoingRideCount {
+    if (ongoingTrip == null) {
+      return 0;
+    }
+    return ongoingTrip!
+        .where((TripDetail t) => _rideStatusBlocksStartingAnother(t.currentStatus))
+        .length;
+  }
+
+  String? get firstBlockingOngoingTripId {
+    if (ongoingTrip == null) {
+      return null;
+    }
+    for (final TripDetail t in ongoingTrip!) {
+      if (_rideStatusBlocksStartingAnother(t.currentStatus)) {
+        return t.id;
+      }
+    }
+    return null;
+  }
+
+  void _syncOnRoadLocalStateWithTripDetail(String requestedTripId) {
+    final TripDetail? d = tripDetail;
+    if (d?.id == null || d!.id != requestedTripId) {
+      return;
+    }
+    final String s = (d.currentStatus ?? '').toLowerCase();
+    if (s == AppConstants.completed || s == AppConstants.cancelled) {
+      final String id = d.id ?? '';
+      if (activeOnRoadTrip?['id']?.toString() == id ||
+          _onRoadTripRequestId == id) {
+        activeOnRoadTrip = null;
+        setOnRoadTripMode(false, notify: false);
+      }
+    }
+  }
+
+  /// Opens map for a trip from dashboard / ongoing card; handles on-road vs regular.
+  Future<void> openTripMapFromDashboard(String tripId) async {
+    final Response value = await getRideDetails(tripId, fromHomeScreen: true);
+    if (value.statusCode != 200 || tripDetail == null) {
+      return;
+    }
+
+    final bool treatAsOnRoad = tripDetail!.isOnRoadBooking ||
+        (hasActiveOnRoadTrip &&
+            activeOnRoadTrip?['id']?.toString() == tripId);
+
+    if (treatAsOnRoad) {
+      setOnRoadTripMode(true, tripRequestId: tripId, notify: false);
+      final String status = (tripDetail?.currentStatus ?? '').toLowerCase();
+      if (status == AppConstants.ongoing) {
+        Get.find<RiderMapController>().setRideCurrentState(RideState.ongoing);
+      } else if (status == AppConstants.outForPickup ||
+          status == 'outforpickup') {
+        Get.find<RiderMapController>().setRideCurrentState(RideState.outForPickup);
+      } else {
+        Get.find<RiderMapController>().setRideCurrentState(RideState.accepted);
+      }
+      Get.find<RiderMapController>().setMarkersInitialPosition();
+      await remainingDistance(tripId, mapBound: true);
+      updateRoute(false, notify: true);
+      Get.to(() => const MapScreen(fromScreen: 'on_road'));
+      update();
+      return;
+    }
+
+    setOnRoadTripMode(false, notify: false);
+    if (tripDetail?.currentStatus == AppConstants.accepted ||
+        tripDetail?.currentStatus == AppConstants.outForPickup) {
+      if (tripDetail?.currentStatus == AppConstants.accepted) {
+        Get.find<RiderMapController>().setRideCurrentState(RideState.accepted);
+      } else {
+        Get.find<RiderMapController>().setRideCurrentState(RideState.outForPickup);
+      }
+      Get.find<RiderMapController>().setMarkersInitialPosition();
+      await remainingDistance(tripId, mapBound: true);
+      updateRoute(false, notify: true);
+      Get.to(() => const MapScreen(fromScreen: 'splash'));
+    } else if (tripDetail?.currentStatus == AppConstants.completed &&
+        tripDetail?.paymentStatus == AppConstants.unPaid) {
+      final Response finalFareResponse = await getFinalFare(tripId);
+      if (finalFareResponse.statusCode == 200) {
+        Get.to(() => const PaymentReceivedScreen());
+      }
+    } else {
+      Get.find<RiderMapController>().setRideCurrentState(RideState.ongoing);
+      Get.find<RiderMapController>().setMarkersInitialPosition();
+      await remainingDistance(tripId, mapBound: true);
+      updateRoute(false, notify: true);
+      Get.to(() => const MapScreen(fromScreen: 'splash'));
+    }
+  }
+
   Future<Response> ongoingTripList() async {
     Response response = await rideServiceInterface.ongoingTripList();
     if (response.statusCode == 200) {
@@ -194,6 +316,18 @@ class RideController extends GetxController implements GetxService{
       accepting = true;
       update();
     Response response = await rideServiceInterface.tripAcceptOrReject(tripId, action);
+    if (response.statusCode != 200) {
+      // Backend variants sometimes expect accept/reject instead of accepted/rejected.
+      final String? fallbackAction = action == 'accepted'
+          ? 'accept'
+          : (action == 'rejected' ? 'reject' : null);
+      if (fallbackAction != null) {
+        final Response retryResponse = await rideServiceInterface.tripAcceptOrReject(tripId, fallbackAction);
+        if (retryResponse.statusCode == 200) {
+          response = retryResponse;
+        }
+      }
+    }
     if (response.statusCode == 200) {
 
       accepting = false;
@@ -243,7 +377,10 @@ class RideController extends GetxController implements GetxService{
       }
 
     }else{
-
+      final String message = (response.body is Map<String, dynamic> && response.body['message'] != null)
+          ? response.body['message'].toString()
+          : 'server_error'.tr;
+      showCustomSnackBar(message);
       accepting = false;
     }
     accepting = false;
@@ -377,11 +514,60 @@ class RideController extends GetxController implements GetxService{
   String onRoadActionType = '';
   Map<String, dynamic>? activeOnRoadTrip;
   Map<String, dynamic>? lastCompletedOnRoadTrip;
+  bool _isOnRoadTripMode = false;
+  String? _onRoadTripRequestId;
+
+  bool get isOnRoadTripMode => _isOnRoadTripMode;
+  String? get onRoadTripRequestId => _onRoadTripRequestId;
 
   bool get hasActiveOnRoadTrip {
     if (activeOnRoadTrip == null) return false;
     final String status = (activeOnRoadTrip?['status'] ?? '').toString().toLowerCase();
     return status != 'completed' && status != 'cancelled';
+  }
+
+  void setOnRoadTripMode(bool value, {String? tripRequestId, bool notify = true}) {
+    _isOnRoadTripMode = value;
+    _onRoadTripRequestId = value ? tripRequestId : null;
+    if (notify) {
+      update();
+    }
+  }
+
+  Future<bool> prepareOnRoadTripForRideUi({String? tripRequestId}) async {
+    String? id = tripRequestId ?? activeOnRoadTrip?['id']?.toString();
+    if (id == null || id.isEmpty) {
+      await fetchActiveOnRoadTrip();
+      id = activeOnRoadTrip?['id']?.toString();
+    }
+    if (id == null || id.isEmpty) {
+      return false;
+    }
+
+    final Response detailsResponse = await getRideDetails(id, fromHomeScreen: true);
+    if (detailsResponse.statusCode != 200 || tripDetail == null) {
+      return false;
+    }
+
+    final String detailStatus = (tripDetail?.currentStatus ?? '').toLowerCase();
+    if (detailStatus == AppConstants.completed || detailStatus == AppConstants.cancelled) {
+      activeOnRoadTrip = null;
+      setOnRoadTripMode(false, notify: false);
+      update();
+      return false;
+    }
+
+    setOnRoadTripMode(true, tripRequestId: id, notify: false);
+    final String status = (tripDetail?.currentStatus ?? '').toLowerCase();
+    if (status == 'ongoing') {
+      Get.find<RiderMapController>().setRideCurrentState(RideState.ongoing);
+    } else if (status == 'out_for_pickup' || status == 'outforpickup') {
+      Get.find<RiderMapController>().setRideCurrentState(RideState.outForPickup);
+    } else {
+      Get.find<RiderMapController>().setRideCurrentState(RideState.accepted);
+    }
+    update();
+    return true;
   }
 
   Future<Response> tripStatusUpdate(String status,String id, String message, String cancellationCause,{String? dateTime}) async {
@@ -432,6 +618,7 @@ class RideController extends GetxController implements GetxService{
         final dynamic trip = response.body['data'];
         if (trip is Map<String, dynamic>) {
           activeOnRoadTrip = trip;
+          setOnRoadTripMode(true, tripRequestId: trip['id']?.toString(), notify: false);
         }
       }
       showCustomSnackBar('trip_status_updated_successfully'.tr, isError: false);
@@ -445,21 +632,33 @@ class RideController extends GetxController implements GetxService{
     return response;
   }
 
-  Future<Response?> finishOnRoadTrip() async {
+  Future<Response?> finishOnRoadTrip({
+    bool cancelled = false,
+    double? distanceKm,
+    double? idleFee,
+    double? delayFee,
+  }) async {
     isOnRoadActionLoading = true;
     onRoadActionType = 'finish';
     update();
 
-    String? activeOnRoadTripId;
+    String? activeOnRoadTripId = activeOnRoadTrip?['id']?.toString();
+    String? activeOnRoadTripRefId = activeOnRoadTrip?['ref_id']?.toString();
     Response listResponse = await rideServiceInterface.getOnRoadTripList(limit: 20, offset: 1);
     if(listResponse.statusCode == 200) {
       final List<dynamic> trips = (listResponse.body is Map<String, dynamic> && listResponse.body['data'] is List)
           ? listResponse.body['data']
           : <dynamic>[];
       for(final dynamic trip in trips) {
-        if(trip is Map<String, dynamic> && trip['status'] != 'completed' && trip['id'] != null) {
-          activeOnRoadTripId = trip['id'].toString();
-          break;
+        if(trip is Map<String, dynamic>) {
+          final String status = (trip['status'] ?? '').toString().toLowerCase();
+          final String bookingSource = (trip['booking_source'] ?? '').toString().toLowerCase();
+          if(bookingSource == 'on_road' && status != 'completed' && status != 'cancelled' && trip['id'] != null) {
+            activeOnRoadTripId = trip['id'].toString();
+            activeOnRoadTripRefId = trip['ref_id']?.toString();
+            activeOnRoadTrip = trip;
+            break;
+          }
         }
       }
     } else {
@@ -478,16 +677,76 @@ class RideController extends GetxController implements GetxService{
       return null;
     }
 
-    Response response = await rideServiceInterface.finishOnRoadTrip(activeOnRoadTripId);
+    Response response = await rideServiceInterface.finishOnRoadTrip(
+      activeOnRoadTripId,
+      cancelled: cancelled,
+      distanceKm: distanceKm,
+      idleFee: idleFee,
+      delayFee: delayFee,
+    );
     if(response.statusCode == 200) {
-      if (response.body is Map<String, dynamic>) {
+      if (cancelled) {
+        activeOnRoadTrip = null;
+        setOnRoadTripMode(false, notify: false);
+        showCustomSnackBar('trip_is_rejected'.tr, isError: false);
+        try {
+          final TripController tripController = Get.find<TripController>();
+          await tripController.getTripList(
+              1,
+              '',
+              '',
+              'ride_request',
+              tripController.selectedFilterTypeName,
+              tripController.selectedStatusName);
+        } catch (_) {}
+        isOnRoadActionLoading = false;
+        onRoadActionType = '';
+        update();
+        return response;
+      }
+      await getRideDetails(activeOnRoadTripId, fromHomeScreen: true);
+      if (tripDetail != null && tripDetail!.id == activeOnRoadTripId) {
+        lastCompletedOnRoadTrip = <String, dynamic>{
+          'id': tripDetail!.id,
+          'ref_id': tripDetail!.refId ?? activeOnRoadTripRefId,
+          'distance_km': tripDetail!.actualDistance,
+          'total_fare': tripDetail!.paidFare,
+          'status': 'completed',
+          'booking_source': 'on_road',
+        };
+      } else if (response.body is Map<String, dynamic>) {
         final dynamic trip = response.body['data'];
         if (trip is Map<String, dynamic>) {
           lastCompletedOnRoadTrip = trip;
         }
       }
       activeOnRoadTrip = null;
-      showCustomSnackBar('trip_completed_successfully'.tr, isError: false);
+      setOnRoadTripMode(false, notify: false);
+      try {
+        final TripController tripController = Get.find<TripController>();
+        await tripController.getTripList(
+            1,
+            '',
+            '',
+            'ride_request',
+            tripController.selectedFilterTypeName,
+            tripController.selectedStatusName);
+      } catch (_) {}
+
+      Get.find<RiderMapController>().setRideCurrentState(RideState.initial);
+      await getFinalFare(activeOnRoadTripId, showApiError: false);
+      if (finalFare == null &&
+          tripDetail != null &&
+          tripDetail!.id == activeOnRoadTripId) {
+        finalFare = FinalFare.fromTripDetail(tripDetail!);
+      }
+      if (finalFare != null) {
+        showCustomSnackBar('trip_completed_successfully'.tr, isError: false);
+        Get.off(() => const PaymentReceivedScreen());
+      } else {
+        showCustomSnackBar('trip_completed_successfully'.tr, isError: false);
+        Get.offAll(() => const DashboardScreen());
+      }
     } else {
       ApiChecker.checkApi(response);
     }
@@ -498,30 +757,74 @@ class RideController extends GetxController implements GetxService{
     return response;
   }
 
+  /// Resolves [activeOnRoadTrip] via GET /api/driver/ride/on-road/active-trip-request when available;
+  /// falls back to scanning [getOnRoadTripList] if the dedicated endpoint is missing or errors.
   Future<void> fetchActiveOnRoadTrip() async {
     try {
-      Response listResponse = await rideServiceInterface
+      final Response activeResponse = await rideServiceInterface
+          .getOnRoadActiveTripRequest()
+          .timeout(const Duration(seconds: 8));
+      if (activeResponse.statusCode == 200 && activeResponse.body is Map<String, dynamic>) {
+        final Map<String, dynamic> body =
+            activeResponse.body as Map<String, dynamic>;
+        final dynamic data = body['data'];
+        if (data is Map<String, dynamic> && data.isNotEmpty) {
+          final String status = (data['status'] ?? '').toString().toLowerCase();
+          final String bookingSource =
+              (data['booking_source'] ?? '').toString().toLowerCase();
+          if (bookingSource == 'on_road' &&
+              status != 'completed' &&
+              status != 'cancelled') {
+            activeOnRoadTrip = data;
+            update();
+            return;
+          }
+        }
+        activeOnRoadTrip = null;
+        setOnRoadTripMode(false, notify: false);
+        update();
+        return;
+      }
+    } catch (_) {
+      // Fall through to list-based discovery.
+    }
+    await _fetchActiveOnRoadTripFromRideListFallback();
+  }
+
+  Future<void> _fetchActiveOnRoadTripFromRideListFallback() async {
+    try {
+      final Response listResponse = await rideServiceInterface
           .getOnRoadTripList(limit: 20, offset: 1)
           .timeout(const Duration(seconds: 8));
       if (listResponse.statusCode == 200) {
-        final List<dynamic> trips = (listResponse.body is Map<String, dynamic> && listResponse.body['data'] is List)
-            ? listResponse.body['data']
-            : <dynamic>[];
+        final List<dynamic> trips =
+            (listResponse.body is Map<String, dynamic> &&
+                    listResponse.body['data'] is List)
+                ? listResponse.body['data']
+                : <dynamic>[];
         Map<String, dynamic>? active;
         for (final dynamic trip in trips) {
           if (trip is Map<String, dynamic>) {
-            final String status = (trip['status'] ?? '').toString().toLowerCase();
-            if (status != 'completed' && status != 'cancelled') {
+            final String status =
+                (trip['status'] ?? '').toString().toLowerCase();
+            final String bookingSource =
+                (trip['booking_source'] ?? '').toString().toLowerCase();
+            if (bookingSource == 'on_road' &&
+                status != 'completed' &&
+                status != 'cancelled') {
               active = trip;
               break;
             }
           }
         }
         activeOnRoadTrip = active;
+        if (active == null) {
+          setOnRoadTripMode(false, notify: false);
+        }
         update();
       }
     } catch (_) {
-      // Keep home usable even if on-road list endpoint is slow/down.
+      // Keep home usable even if on-road endpoints are slow/down.
     }
   }
 
@@ -566,20 +869,28 @@ class RideController extends GetxController implements GetxService{
 
 
   FinalFare? finalFare;
-  Future<Response> getFinalFare(String tripId) async {
+  Future<Response> getFinalFare(String tripId, {bool showApiError = true}) async {
     isLoading = true;
     update();
     Response response = await rideServiceInterface.getFinalFare(tripId);
     if (response.statusCode == 200 ) {
       Get.find<RiderMapController>().initializeData();
-      if(response.body['data'] != null){
-        finalFare = FinalFareModel.fromJson(response.body).data!;
-
+      try {
+        if (response.body['data'] != null) {
+          finalFare = FinalFareModel.fromJson(response.body).data;
+        }
+      } catch (e, st) {
+        if (kDebugMode) {
+          print('getFinalFare parse error: $e\n$st');
+        }
+        finalFare = null;
       }
       isLoading = false;
     }else{
       isLoading = false;
-      ApiChecker.checkApi(response);
+      if (showApiError) {
+        ApiChecker.checkApi(response);
+      }
     }
     update();
     return response;
